@@ -92,16 +92,20 @@ export default function LoginForm() {
         .catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
         setError("Sign in failed. Check your badge and PIN, then try again.");
-        setSubmitting(false);
         return;
       }
       // D3 — JSON response + client navigation. router.push triggers the
-      // RSC payload for /map; refresh() forces the server gate on / to
-      // re-read cookies on the next root visit.
+      // RSC payload for /map. We don't call router.refresh() — the root
+      // gate on `/` is an async server component with no caching, so it
+      // re-reads cookies on the next request naturally.
       router.push("/map");
-      router.refresh();
     } catch {
       setError("Network error. Try again.");
+    } finally {
+      // Always reset submitting so the CTA is interactive again if the
+      // user lands back on /login (e.g. failed POST, or /map 404s during
+      // the HF-005 gap and the form remains mounted). If navigation
+      // succeeds, the component unmounts before the user sees the flicker.
       setSubmitting(false);
     }
   }
@@ -116,9 +120,11 @@ export default function LoginForm() {
         >
           Badge Number
         </label>
+        {/* No aria-label — the visible <label htmlFor={badgeId}> above is the
+            accessible name source. Per WAI-ARIA, aria-label would override
+            and force the markup to disagree with what the user sees. */}
         <input
           id={badgeId}
-          aria-label="Badge number"
           type="text"
           inputMode="numeric"
           autoComplete="off"
@@ -183,7 +189,7 @@ export default function LoginForm() {
       {/* SIGN IN CTA — aria-disabled gates click navigation, opacity gates visual */}
       <button
         type="submit"
-        aria-disabled={blocked || undefined}
+        aria-disabled={blocked ? "true" : undefined}
         onClick={(e) => {
           if (blocked) e.preventDefault();
         }}

@@ -36,13 +36,16 @@ export const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours — one shift
  * stay consistent.
  */
 export function hfBadgeCookieOptions() {
+  // `as const` makes the returned object readonly at the type level so a
+  // future caller cannot accidentally do `const opts = hfBadgeCookieOptions();
+  // opts.httpOnly = false;` and silently strip a security flag.
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
+    sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
     maxAge: COOKIE_MAX_AGE_SECONDS,
-  };
+  } as const;
 }
 
 /**
