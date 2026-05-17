@@ -19,7 +19,11 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "pnpm dev",
-    url: "http://localhost:3000",
+    // Probe a static-200 route so this readiness check is independent of the
+    // app's auth/redirect state. With HF-001's root redirect gate, `/` is
+    // 307 → 404 until `/login` (and later `/map`) exist, which Playwright
+    // would interpret as "not ready". `/api/health/db` is a stable 200.
+    url: "http://localhost:3000/api/health/db",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
