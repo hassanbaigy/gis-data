@@ -66,3 +66,18 @@ The HF-000 AC originally said "`tailwind.config.ts` exports …" — that's v3 t
 - `prisma migrate dev` runs the `prisma.seed` command at the end. If `prisma/seed.ts` doesn't exist yet, the migrate command fails AFTER applying the migration. The schema/migration is still saved — just rerun seed once the file exists.
 - DB file location: `prisma/dev.db`. Gitignore `prisma/*.db` and `prisma/*.db-journal`. The `prisma/migrations/` folder IS committed.
 - `lib/db.ts` lives under `src/lib/db.ts` so the `@/*` → `./src/*` path alias resolves. Import as `@/lib/db`.
+
+## Next 16 cookies + redirect (HF-001, 2026-05-17 — verified against node_modules/next/dist/docs)
+
+- **`cookies()` is async** in Next 15+. Source: `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/cookies.md` lines 6, 67-68. Always `const cookieStore = await cookies()` — calling it synchronously returns a Promise object, not the cookie store, and every `.get/.has/.set` silently no-ops. The synchronous form is deprecated and slated to be removed.
+- **`cookies().set` only works in Route Handlers / Server Functions**, not in Server Component renders (HTTP doesn't allow cookies after streaming starts). Pattern in this repo: read-only `cookies()` in `src/app/page.tsx`, write `cookies().set` in `src/app/api/auth/sign-in/route.ts`.
+- **`redirect()` throws `NEXT_REDIRECT` internally**. Source: `redirect.md` lines 50-52. Call it OUTSIDE any `try/catch` — wrapping a redirect in a try swallows the throw and the redirect silently fails. The function returns `never` so no `return redirect(...)` needed.
+- **`redirect()` cannot be called in Client Component event handlers.** Source: `redirect.md` line 53. For form submissions on `'use client'` pages, use `useRouter().push('/...')` instead. `redirect()` is OK in client component RENDER (initial SSR path), just not in `onClick`/`onSubmit`.
+- **Cookie `Secure: true` on `http://localhost`** is silently rejected by Chrome/Firefox — the browser drops the Set-Cookie without an error log. In dev (`NODE_ENV !== 'production'`), pass `secure: false`. Pattern in `src/lib/auth.ts` `hfBadgeCookieOptions()`: `secure: process.env.NODE_ENV === 'production'`.
+
+## Playwright + this app (HF-001, 2026-05-17)
+
+- **`webServer.url` in `playwright.config.ts` must probe a stable-200 route**, not one that redirects. The original config probed `/`, which after HF-001's root-redirect gate becomes 307 → 404 (until every redirect target exists). Playwright follows the redirect and treats the 404 as "not ready", then tries to spawn a duplicate dev server which collides on port 3000. The repo uses `http://localhost:3000/api/health/db` as the probe — independent of auth state, always 200 if the DB is up.
+- **`httpOnly` cookies cannot be read from `document.cookie`**. To verify cookie state in Playwright tests, use `await page.context().cookies()` and inspect the returned objects' `name`, `value`, `httpOnly`, `sameSite`, `path`, `secure`, `expires` fields.
+- **`page.waitForNavigation()` is deprecated** in Playwright 1.5x+. Use `await page.waitForURL(/regex|glob/)` instead.
+- **Console-error guard pattern**: collect `page.on("console", msg => msg.type() === "error")` in `beforeEach`, assert empty in `afterEach`. When a story intentionally lands on a route that doesn't exist yet (e.g. `/map` until HF-005 ships), filter the specific `"Failed to load resource ... 404"` message from the guard, scoped by `page.url()` so unrelated 404s still fail the test.
