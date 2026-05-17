@@ -1,10 +1,10 @@
 # Dev B onboarding — HF-001 (mock auth + /login screen)
 
-Copy everything below this line into Dev B's first Claude Code message in his clone of the repo. He should be in the project root at `/Users/hassan/Development/gis-data` (or wherever he's cloned it), on the `develop` branch, with HF-Foundation merged.
+Copy everything below this line into Dev B's first Claude Code message in his clone of the repo. He should be in the project root (wherever he cloned `gis-data`), on the `develop` branch, with HF-Foundation merged.
 
 ---
 
-You are Dev B's coordinating agent. Your task is **HF-001 — mock auth + /login screen**. Two devs are working in parallel: I'm on a different worktree, so you must work in your own isolated worktree and never touch `develop` directly. Everything you produce ships as one PR against `develop`.
+You are Dev B's coordinating agent. Your task is **HF-001 — mock auth + /login screen**. Two devs are working in parallel: Dev A is on a different worktree (possibly a different machine), so you must work in your own isolated worktree and never touch `develop` directly. Everything you produce ships as one PR against `develop`.
 
 ## Before you write a line of code
 
@@ -21,29 +21,65 @@ Read these in order. They are not suggestions:
 
 ## Setup
 
+### Prerequisites
+
+- Node ≥ 20.9.0. The repo pins `20.18.1` via `.nvmrc` — use nvm / fnm / asdf to switch. **Do NOT use Node 18** (Next 16 will refuse to start).
+- pnpm ≥ 10. If missing: `npm i -g pnpm`.
+- A Mapbox account with both a public token (`pk.…`) and a secret token (`sk.…`). Create at <https://account.mapbox.com/access-tokens/>. (You don't actually NEED these for HF-001 — the login screen has no map — but you'll want them on disk for every story after this.)
+
+### Get the code + DB locally
+
 ```bash
+# 1. Pull the latest develop
 git fetch origin
 git checkout develop && git pull origin develop
 
-# Create your worktree (port 3001 — port 3000 is mine)
+# 2. Switch to the pinned Node version
+nvm use            # or: fnm use, asdf install
+
+# 3. Create your worktree off develop
 git worktree add ../gis-data-hf-001-login -b feat/hf-001-login origin/develop
 cd ../gis-data-hf-001-login
 
-# Install + DB
-PATH=/opt/homebrew/opt/node@25/bin:$PATH
-cp ../gis-data/.env.local .env.local    # bring your Mapbox tokens
-pnpm install
-pnpm prisma generate
-pnpm prisma migrate dev                  # applies HF-Foundation migration to your local dev.db
-pnpm prisma db seed                       # 456 hydrants + badge 0418 firefighter + 6 incidents
+# 4. Create .env.local from the committed template, then paste YOUR Mapbox tokens
+cp .env.example .env.local
+# Open .env.local in your editor and replace the empty values:
+#   NEXT_PUBLIC_MAPBOX_TOKEN=pk.your_public_token_here
+#   MAPBOX_SECRET_TOKEN=sk.your_secret_token_here
+# .env.local is gitignored — your tokens stay on your machine.
+# (.env with DATABASE_URL is already in the repo, committed. Don't touch it.)
 
-# Sanity-check the seed before you start
+# 5. Install deps + set up the DB
+pnpm install
+pnpm prisma generate              # generates the typed Prisma client
+pnpm prisma migrate dev           # creates prisma/dev.db + applies the schema
+pnpm prisma db seed               # loads 456 hydrants + badge 0418 firefighter + 6 incidents
+```
+
+The seed reads from the **already-committed** `prisma/seed-data/hydrants.json` — it does NOT call Mapbox. Setup takes <30 seconds.
+
+### Pick a port
+
+If Dev A is on a different machine, **port 3000 is fine**:
+```bash
+pnpm dev &
+sleep 5
+curl -s http://localhost:3000/api/health/db
+```
+
+If you're sharing a machine with Dev A who's already on `:3000`, use `:3001`:
+```bash
 PORT=3001 pnpm dev &
 sleep 5
 curl -s http://localhost:3001/api/health/db
-# Expect: {"firefighterCount":1,"hydrantCount":456,...,"incidentOwnerBadges":["0418"]}
-# If you don't see this, STOP and tell the user — your data layer isn't right.
 ```
+
+In either case, the expected response is:
+```json
+{"firefighterCount":1,"hydrantCount":456,"hydrantGeocodedCount":454,"incidentCount":6,"incidentsByType":{...},"incidentOwnerBadges":["0418"]}
+```
+
+If you don't see this, STOP and tell the user — your data layer isn't right. Don't proceed.
 
 ## Write STORY.md before you write code
 
@@ -53,7 +89,7 @@ Create `STORY.md` at your worktree root with the story statement, acceptance cri
 
 1. **Plan** — your STORY.md plus a 3-7 step task list. Sign-off from user.
 2. **Worktree** — already done above.
-3. **Test first** — write `tests/e2e/hf-001-login.spec.ts` covering every AC. The spec should run against `http://localhost:3001` (set `PW_BASE_URL=http://localhost:3001` when running). It MUST fail at this point. Commit the failing spec.
+3. **Test first** — write `tests/e2e/hf-001-login.spec.ts` covering every AC. Set `PW_BASE_URL` to match the port you picked (`http://localhost:3000` or `:3001`). It MUST fail at this point. Commit the failing spec.
 4. **Implement** —
    - `src/app/login/page.tsx` — the login screen. Server component if possible; client component only for the PIN-cell-focus state machine. Match the visual reference.
    - `src/lib/auth.ts` — `requireFirefighter()` (reads `hf_badge` cookie, calls `prisma.firefighter.findUnique`, redirects to `/login` if missing). Also `signIn(badge, pin)` helper that upserts the `Firefighter` row and sets the cookie.
@@ -70,7 +106,7 @@ Create `STORY.md` at your worktree root with the story statement, acceptance cri
 - **No PR without a passing Playwright spec.** Every AC must have a corresponding test.
 - **No PR with confidence < 0.85.**
 - **No PR against `main`.** Always `develop`.
-- **No code changes outside your worktree.** If you find yourself editing `/Users/hassan/Development/gis-data/...`, stop.
+- **No code changes outside your worktree.** If you find yourself editing the main repo's working copy, stop.
 - **Do not touch `src/app/api/health/db/`** — that's HF-Foundation's diagnostic route, leave it.
 - **Do not edit the Prisma schema or migrations** — HF-Foundation owns the data layer. If you genuinely need a schema change, raise it with the user first.
 
@@ -84,10 +120,10 @@ Create `STORY.md` at your worktree root with the story statement, acceptance cri
 - `STORY.md` at your worktree root
 - `.claude-resume.md` at your worktree root (live working state — see Resume protocol)
 
-## Files I (Dev A) own — DO NOT TOUCH
+## Files Dev A owns — DO NOT TOUCH
 
-- `src/app/api/hydrants/...` (HF-007 — coming next from me)
-- `src/components/MapView.tsx` (HF-004 — coming next from me)
+- `src/app/api/hydrants/...` (HF-007)
+- `src/components/MapView.tsx` (HF-004)
 - Any file under `prisma/`
 
 ## Memory injection protocol (you are also Lead in this session)
@@ -103,7 +139,7 @@ After every agent result, scan for novel gotchas worth capturing back into `.cla
 
 ## When you're done
 
-Open the PR and **stop**. Do not merge. The user reviews and merges. Then I (Dev A) and you both `git pull origin develop` and pick the next pair of stories.
+Open the PR and **stop**. Do not merge. The user reviews and merges. Then both you and Dev A `git pull origin develop` and pick the next pair of stories.
 
 ## Resume on session restart
 
