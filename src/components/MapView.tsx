@@ -21,8 +21,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 const MAPBOX_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-// Stable Mapbox source + layer ids; we always have at most one of each
-// on a given MapView instance.
+// Stable Mapbox source + layer IDs. We currently assume at most one MapView
+// per page — if a future story renders two simultaneously (split view, etc.)
+// the second mount will collide on these IDs and Mapbox will throw. At that
+// point, suffix the IDs with an instance counter passed via props.
 const MARKER_SOURCE = "hf-markers";
 const ROUTE_SOURCE = "hf-route";
 const LAYER_INCIDENT = "hf-incident-circle";
@@ -47,6 +49,14 @@ export type MapViewProps = {
   zoom: number;
   markers: MapMarker[];
   routeGeometry?: GeoJSON.LineString;
+  /**
+   * Optional override classes. The component fills its parent by default
+   * via inline width/height: 100%. If you pass `className`, you are
+   * responsible for ensuring the resolved size is non-zero BEFORE
+   * mount — Mapbox reads container.clientWidth/Height on init and a
+   * 0-height container renders an invisible map. See
+   * `.claude/agent-context/mapbox-integration.md` for the flexbox fix.
+   */
   className?: string;
 };
 
@@ -99,6 +109,10 @@ export function MapView({
     if (!MAPBOX_TOKEN) return;
     if (!containerRef.current) return;
 
+    // NOTE: mapboxgl.accessToken is a GLOBAL on the mapbox-gl module. If a
+    // future story ever mounts two MapView instances with different tokens
+    // (e.g. one signed for admin, one public), the later mount's token will
+    // win for both instances. Not a current problem but a known footgun.
     mapboxgl.accessToken = MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -226,8 +240,11 @@ export function MapView({
     return () => {
       try {
         map.remove();
-      } catch {
-        // Mapbox throws on double-remove in some HMR scenarios; ignore.
+      } catch (err) {
+        // Mapbox throws on double-remove in some HMR scenarios. Log so a
+        // legitimate teardown failure (lost GL context, etc.) is visible
+        // instead of silently dropped.
+        console.warn("[MapView] map.remove() threw during cleanup:", err);
       }
       mapRef.current = null;
       styleLoadedRef.current = false;
@@ -245,10 +262,16 @@ export function MapView({
     map.jumpTo({ center, zoom });
   }, [center, zoom]);
 
+  // Derived: only sync data when the map is fully ready. We use this
+  // (not `status`) in dep arrays so the effects don't re-fire on an error
+  // transition, which would call setPaintProperty on a torn-down map.
+  const isReady = status === "ready";
+
   // -------------------------------------------------------------------------
   // Sync markers data
   // -------------------------------------------------------------------------
   useEffect(() => {
+    if (!isReady) return;
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
     const src = map.getSource(MARKER_SOURCE) as
@@ -264,12 +287,13 @@ export function MapView({
       "circle-stroke-opacity",
       ringHydrants ? 1 : 0,
     );
-  }, [markers, ringHydrants, status]);
+  }, [markers, ringHydrants, isReady]);
 
   // -------------------------------------------------------------------------
   // Sync route geometry
   // -------------------------------------------------------------------------
   useEffect(() => {
+    if (!isReady) return;
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
     const src = map.getSource(ROUTE_SOURCE) as
@@ -291,7 +315,7 @@ export function MapView({
       "visibility",
       routeGeometry ? "visible" : "none",
     );
-  }, [routeGeometry, status]);
+  }, [routeGeometry, isReady]);
 
   return (
     <div

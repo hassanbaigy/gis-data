@@ -21,10 +21,11 @@ test.describe("HF-004 MapView", () => {
 
     await page.goto(FIXTURE);
 
-    // The state surface appears immediately; wait for it to flip to "ready"
-    // once the Mapbox style + layers are loaded.
+    // The state surface is sr-only (1x1 clipped) so `toBeVisible()` is
+    // unreliable. Use `toBeAttached()` to confirm it's in the DOM, then
+    // wait for the status attribute to flip to "ready".
     const stateSurface = page.locator("[data-hf-map-state]");
-    await expect(stateSurface).toBeVisible();
+    await expect(stateSurface).toBeAttached();
     await expect(stateSurface).toHaveAttribute("data-status", "ready", {
       timeout: 15_000,
     });
