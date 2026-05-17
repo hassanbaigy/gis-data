@@ -32,6 +32,18 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# delivery-workflow state (per-machine, not a deliverable)
+.claude/state/
+.claude-resume.md
+
+# Playwright run artifacts — per-story screenshots and reports. Baselines
+# (tests/screenshots/baseline/) ARE kept; per-run folders are not.
+/tests/screenshots/*
+!/tests/screenshots/baseline/
+/tests/playwright-report/
+/test-results/
 
 # vercel
 .vercel
