@@ -55,9 +55,10 @@ test.describe("HF-Foundation data layer", () => {
     // Type coverage — need ≥4 distinct types so the filter UI has variety.
     expect(Object.keys(body.incidentsByType).length).toBeGreaterThanOrEqual(4);
 
-    // Linkage — every incident must be owned by the demo firefighter
-    // (badge 0418). If exactly one badge owns all incidents AND that
-    // badge is 0418, the relation is correctly wired.
-    expect(body.incidentOwnerBadges).toEqual(["0418"]);
+    // Linkage — the seeded incidents must be owned by the demo
+    // firefighter (badge 0418). Use `toContain` rather than `toEqual`
+    // so HF-001's future tests (which may create other firefighters)
+    // don't break this assertion.
+    expect(body.incidentOwnerBadges).toContain("0418");
   });
 });

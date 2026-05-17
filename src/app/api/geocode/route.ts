@@ -44,6 +44,9 @@ export async function GET(req: Request) {
   url.searchParams.set("proximity", GORHAM_PROXIMITY);
   url.searchParams.set("access_token", token);
 
+  // Mapbox REST APIs reject `Authorization: Bearer` auth (verified 401
+  // against Geocoding v6, Directions v5, Matrix v1). Token must be a
+  // query param. scrubTokens below handles the response-leak path.
   const res = await fetch(url, { method: "GET" });
   if (!res.ok) {
     let body = "";

@@ -29,6 +29,17 @@ export async function GET(
     return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
 
+  // Defensive — Incident.lat/lng are NOT NULL in the schema, but POST
+  // validation is the only thing enforcing that. A row corrupted via raw
+  // SQL or a future migration would still satisfy `findUnique` but blow
+  // up haversine. Return a 500 with a clear message instead.
+  if (!Number.isFinite(incident.lat) || !Number.isFinite(incident.lng)) {
+    return NextResponse.json(
+      { error: "incident-coords-invalid", id: incident.id },
+      { status: 500 },
+    );
+  }
+
   try {
     const nearestResult = await findNearestHydrants(prisma, {
       lat: incident.lat,

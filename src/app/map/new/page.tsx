@@ -34,6 +34,8 @@ export default function NewIncidentPage() {
   const [selected, setSelected] = useState<GeocodeResult | null>(null);
   const [type, setType] = useState<IncidentType | null>(null);
   const [alarmLevel, setAlarmLevel] = useState<1 | 2 | 3 | 4 | 5>(2);
+  // TODO(HF-001-merge): read unitId from the firefighter cookie set by
+  // /api/auth/sign-in. Until HF-001 lands, default to E-12.
   const [unitId, setUnitId] = useState("E-12");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
