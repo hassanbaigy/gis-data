@@ -53,14 +53,16 @@ HF-000  Bootstrap + design system          (BLOCKING — one dev, day 1)
 **Story** — As a developer on this project, I want a scaffolded Next.js app with the design tokens registered and the delivery-workflow tooling in place, so that every later story starts on the same foundation and can be tested + reviewed uniformly.
 
 **Acceptance criteria**
-- `npm run dev` boots the app on `:3000`, the index page renders the "HYDRANT FINDER" wordmark on a `#0a0a0a` background, displayed in Barlow Condensed 800.
-- `tailwind.config.ts` exports the four named colours (`black`/`red`/`yellow`/`paper`) and three font-family tokens (`display`/`ui`/`mono`).
-- `next/font/google` loads Barlow Condensed (700, 800), Inter (400-800), JetBrains Mono (400, 500, 700) and exposes them as CSS vars.
-- `develop` branch exists locally and on `origin`.
-- `@playwright/test` installed, `playwright.config.ts` at repo root, `tests/e2e/` and `tests/screenshots/baseline/` exist.
+- `pnpm dev` boots the app on `:3000`, the index page renders the "HYDRANT FINDER" wordmark on a `#0a0a0a` background, displayed in Barlow Condensed 800.
+- `src/app/globals.css` `@theme inline` block registers the four named colours (`--color-black`/`-red`/`-yellow`/`-paper`) and three font-family tokens (`--font-display`/`-ui`/`-mono`). Tailwind v4 utilities `bg-black`, `bg-red`, `bg-yellow`, `bg-paper`, `font-display`, `font-ui`, `font-mono` all resolve correctly. **No `tailwind.config.ts` file** — that's v3 syntax; this repo is v4.
+- `next/font/google` loads Barlow Condensed (700, 800), Inter (400-800), JetBrains Mono (400, 500, 700) and exposes them as CSS vars on `<html>`.
+- `develop` branch exists locally and on `origin`. Future stories branch off `develop`; only HF-000 commits directly on `develop`.
+- Repo is on `pnpm` (not npm). `pnpm-lock.yaml` committed; `package-lock.json` removed. `engines` block in `package.json` pins Node `>=20.9.0` and pnpm `>=10`. `.nvmrc` pins a specific Node LTS patch.
+- `@playwright/test` installed, `playwright.config.ts` at repo root, `tests/e2e/` and `tests/screenshots/baseline/` exist. Per-run screenshot folders (`tests/screenshots/<story-id>/`) and `tests/playwright-report/` are gitignored; only `baseline/` is kept.
 - `package.json` has `e2e`, `e2e:headed`, `e2e:ui` scripts.
 - `.claude/state/active-stories.json` initialised to `{"stories": []}`; `.gitignore` includes `.claude/state/` and `.claude-resume.md`.
-- A smoke Playwright spec at `tests/e2e/hf-000-smoke.spec.ts` opens `/` and asserts the wordmark is visible in the correct font + colour. Spec passes locally.
+- `.env.example` committed with `NEXT_PUBLIC_MAPBOX_TOKEN` and `MAPBOX_SECRET_TOKEN` keys (no values). `.env.local` is gitignored (real tokens never reach the repo).
+- A smoke Playwright spec at `tests/e2e/hf-000-smoke.spec.ts` opens `/` and asserts the wordmark is visible in the correct font + colour, design tokens are reachable, and Tailwind utilities resolve to the palette. Spec passes locally.
 
 **Out of scope** — Mapbox setup, Prisma, any other screen. This story is plumbing only.
 
