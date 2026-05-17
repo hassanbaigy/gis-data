@@ -27,12 +27,30 @@ test.describe("HF-001 /login screen", () => {
     await context.clearCookies();
   });
 
-  test.afterEach(async () => {
+  test.afterEach(async ({ page }) => {
     // Assert zero browser-console error messages.
     // Next.js dev mode can be noisy with warnings; we only gate on `error` type.
+    //
+    // Known-expected: /map does not exist until HF-005. Tests that intentionally
+    // land on /map (tests 4 and 6 per the AC↔test map in STORY.md) will see
+    // a "Failed to load resource: ... 404 (Not Found)" console error from the
+    // missing page. Filter that one specific message out when the current page
+    // URL is /map. Any other error-level console message still fails the test.
+    const url = page.url();
+    const isOnMap = url.includes("/map");
+    const filtered = consoleErrors.filter((msg) => {
+      if (
+        isOnMap &&
+        msg.includes("Failed to load resource") &&
+        msg.includes("404")
+      ) {
+        return false;
+      }
+      return true;
+    });
     expect(
-      consoleErrors,
-      `unexpected console errors:\n${consoleErrors.join("\n")}`,
+      filtered,
+      `unexpected console errors:\n${filtered.join("\n")}`,
     ).toHaveLength(0);
   });
 
