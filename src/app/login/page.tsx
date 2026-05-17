@@ -37,7 +37,8 @@ export default function LoginPage() {
           <h1 className="mt-5 font-display text-3xl font-extrabold uppercase tracking-tight text-paper">
             HYDRANT FINDER
           </h1>
-          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-paper/40">
+          {/* Spec literal: mixed case ("FDNY" upper, "v0.1" lower, "PROTO" upper) — do NOT add `uppercase` here */}
+          <p className="mt-2 font-mono text-[11px] tracking-[0.18em] text-paper/40">
             FDNY · v0.1 PROTO
           </p>
         </div>
