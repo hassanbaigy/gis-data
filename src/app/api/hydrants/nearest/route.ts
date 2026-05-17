@@ -6,6 +6,7 @@
  * routes (e.g. /api/incidents) can call it directly without HTTP overhead.
  */
 import { NextResponse } from "next/server";
+import { readBadge } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isValidLat, isValidLng, type Coord } from "@/lib/geo";
 import { MapboxError } from "@/lib/mapbox";
@@ -13,12 +14,15 @@ import { findNearestHydrants, MAX_K, NoHydrantsError } from "@/lib/hydrants";
 
 export const dynamic = "force-dynamic";
 
-// TODO(HF-001-merge): gate this route with requireFirefighter() once HF-001
-// merges. Currently any caller can trigger 2 Mapbox API calls.
-
 type Body = { lat?: unknown; lng?: unknown; k?: unknown };
 
 export async function POST(req: Request) {
+  // Auth — gate to prevent anonymous Mapbox quota burn.
+  const badge = await readBadge();
+  if (!badge) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
   // ------------------------------ validate ---------------------------------
   let body: Body;
   try {

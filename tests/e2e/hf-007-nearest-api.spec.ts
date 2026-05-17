@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { authedRequestContext } from "./helpers/auth";
 
 /**
  * HF-007 integration spec — POST /api/hydrants/nearest.
@@ -22,9 +23,7 @@ test.describe("HF-007 POST /api/hydrants/nearest", () => {
   test("returns top 3 in-service hydrants ranked by routed duration", async ({
     playwright,
   }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
 
     const res = await ctx.post(ENDPOINT, { data: GORHAM });
     expect(
@@ -97,9 +96,7 @@ test.describe("HF-007 POST /api/hydrants/nearest", () => {
   });
 
   test("k=1 returns one result", async ({ playwright }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
     const res = await ctx.post(ENDPOINT, { data: { ...GORHAM, k: 1 } });
     expect(res.ok()).toBe(true);
     const body = (await res.json()) as { nearest: unknown[] };
@@ -108,9 +105,7 @@ test.describe("HF-007 POST /api/hydrants/nearest", () => {
   });
 
   test("rejects invalid bodies with 400", async ({ playwright }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
 
     // Missing fields
     let res = await ctx.post(ENDPOINT, { data: {} });

@@ -11,18 +11,23 @@
  * this endpoint.
  */
 import { NextResponse } from "next/server";
+import { readBadge } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { MapboxError } from "@/lib/mapbox";
 import { findNearestHydrants, NoHydrantsError } from "@/lib/hydrants";
 
 export const dynamic = "force-dynamic";
 
-// TODO(HF-001-merge): gate with requireFirefighter() once auth lands.
-
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Auth — route handlers 401 rather than 307 redirect.
+  const badge = await readBadge();
+  if (!badge) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
   const { id } = await params;
   const incident = await prisma.incident.findUnique({ where: { id } });
   if (!incident) {

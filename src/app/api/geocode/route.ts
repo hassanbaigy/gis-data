@@ -11,10 +11,9 @@
  *   3. Top 3 results render as picker cards
  */
 import { NextResponse } from "next/server";
+import { readBadge } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-
-// TODO(HF-001-merge): gate with requireFirefighter() once auth lands.
 
 const GORHAM_PROXIMITY = "-70.4444,43.6791"; // bias toward the seed area
 
@@ -24,6 +23,13 @@ function scrubTokens(s: string): string {
 }
 
 export async function GET(req: Request) {
+  // Auth — even though this endpoint only returns address candidates, it
+  // burns Mapbox quota on every call. Gate to prevent anonymous abuse.
+  const badge = await readBadge();
+  if (!badge) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
   const q = new URL(req.url).searchParams.get("q") ?? "";
   if (q.length < 2) {
     return NextResponse.json({ results: [] });
