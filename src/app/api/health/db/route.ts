@@ -1,10 +1,11 @@
 /**
- * Diagnostic route — reports DB row counts. Used by HF-Foundation's
- * Playwright spec to verify the seed shipped.
+ * Diagnostic route — reports DB row counts and a few invariants for the
+ * HF-Foundation Playwright spec. Not part of the public API surface; a
+ * future story may remove it once dedicated query routes exist.
  *
- * NOT a stable public API. The leading underscore in `_health` marks it
- * as internal-only — future stories MAY remove this if they introduce a
- * proper observability surface.
+ * NOTE: This folder must NOT start with an underscore. In the Next.js
+ * App Router, underscore-prefixed folders are treated as private and
+ * excluded from routing entirely (you'd get a 404).
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -26,6 +27,17 @@ export async function GET() {
       _count: { _all: true },
     });
 
+    // For the spec to verify that every incident links to a single seeded
+    // firefighter, expose the distinct firefighter badges that own incidents.
+    // If exactly one distinct badge owns all incidents AND that badge is
+    // "0418", the relation is correctly wired.
+    const incidentOwnerBadges = await prisma.incident
+      .findMany({
+        distinct: ["firefighterId"],
+        select: { firefighter: { select: { badge: true } } },
+      })
+      .then((rows) => rows.map((r) => r.firefighter.badge).sort());
+
     return NextResponse.json({
       firefighterCount,
       hydrantCount,
@@ -34,6 +46,7 @@ export async function GET() {
       incidentsByType: Object.fromEntries(
         incidentsByType.map((row) => [row.type, row._count._all]),
       ),
+      incidentOwnerBadges,
     });
   } catch (err) {
     return NextResponse.json(

@@ -89,8 +89,11 @@ async function seedFirefighter() {
 }
 
 async function seedIncidents(firefighterId: string) {
-  // Wipe + reseed for determinism. This makes the spec's count check stable.
-  await prisma.incident.deleteMany({});
+  // Wipe + reseed for determinism — but ONLY this firefighter's incidents.
+  // Future test fixtures or integration runs may create their own incidents
+  // under a different firefighter; we never want a reseed to silently nuke
+  // them. If you genuinely need a clean slate, drop the DB instead.
+  await prisma.incident.deleteMany({ where: { firefighterId } });
 
   // Real coords scattered in / around Gorham, ME (the hydrant cluster centre).
   // Each incident sits within ~3km of the centroid; types cover 4 categories

@@ -5268,10 +5268,10 @@
     "state": "ME",
     "zip": "04038",
     "inService": true,
-    "lat": 45.398285,
-    "lng": -69.236551,
-    "geocodedAt": "2026-05-17T19:02:56.761Z",
-    "geocodeNote": "confidence=0.3"
+    "lat": null,
+    "lng": null,
+    "geocodedAt": null,
+    "geocodeNote": "out-of-bounds (213.8km from town centroid)"
   },
   {
     "id": "GOD-HYD00179",
@@ -5862,10 +5862,10 @@
     "state": "ME",
     "zip": "04038",
     "inService": true,
-    "lat": 44.883902,
-    "lng": -70.09739,
-    "geocodedAt": "2026-05-17T19:03:02.605Z",
-    "geocodeNote": "confidence=0.3"
+    "lat": null,
+    "lng": null,
+    "geocodedAt": null,
+    "geocodeNote": "out-of-bounds (136.8km from town centroid)"
   },
   {
     "id": "GOD-HYD00221",
