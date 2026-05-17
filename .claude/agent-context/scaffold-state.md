@@ -47,3 +47,22 @@ Multiple fonts: each gets its own `variable`, all applied to `<html className={`
 
 ## Acceptance-criteria adjustment that this implies
 The HF-000 AC originally said "`tailwind.config.ts` exports …" — that's v3 thinking. In this repo, register tokens in `src/app/globals.css` `@theme` block instead. Story map has been updated.
+
+## Next.js App Router routing surprises
+
+- **Underscore-prefixed folders are private** and excluded from routing. `app/api/_health/db/route.ts` is NOT routable — you'll get a 404. Use `app/api/health/db/route.ts` instead. Reference: Next.js App Router folder conventions.
+- **Parens-wrapped folders are route groups** (`app/(marketing)/about/page.tsx` → `/about`). Useful for layout grouping without affecting URL.
+- **Square-bracket folders are dynamic** (`[id]`, `[...slug]`, `[[...slug]]`).
+
+## Prisma + Next 16 (HF-Foundation, 2026-05-17)
+
+- Prisma 6.19 works fine with Next 16.2.6. Prisma 7 is available but the `prisma-client` generator (new in 7) is still settling; stay on `prisma-client-js` + Prisma 6 unless you have a reason.
+- pnpm v10 blocks build scripts by default. Prisma needs them to download the engine binary. Add this to `package.json` (already in place):
+  ```json
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "prisma", "esbuild", "@tailwindcss/oxide"]
+  }
+  ```
+- `prisma migrate dev` runs the `prisma.seed` command at the end. If `prisma/seed.ts` doesn't exist yet, the migrate command fails AFTER applying the migration. The schema/migration is still saved — just rerun seed once the file exists.
+- DB file location: `prisma/dev.db`. Gitignore `prisma/*.db` and `prisma/*.db-journal`. The `prisma/migrations/` folder IS committed.
+- `lib/db.ts` lives under `src/lib/db.ts` so the `@/*` → `./src/*` path alias resolves. Import as `@/lib/db`.
