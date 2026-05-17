@@ -1,83 +1,76 @@
-# HF-004 — MapView component (dark Mapbox map + 4 marker types)
+# HF-007 — POST /api/hydrants/nearest
 
 ## Story
-As a developer building any map-based screen, I want a reusable `MapView` component that renders a dark Mapbox base map and the four marker types, so that every screen (home, results, history) draws maps the same way and we stop re-implementing markers.
+As the incident-results screen, I need an endpoint that, given a lat/lng, returns the 3 in-service hydrants nearest by routed driving duration plus the route geometry for #1, so that I can show the firefighter a ranked list and a drawn route.
 
-## Acceptance criteria (from `.claude/agent-context/user-stories.md` lines 138-149)
+## Acceptance criteria (from `.claude/agent-context/user-stories.md` lines 212-225)
 
-- `src/components/MapView.tsx` renders a Mapbox GL map using style `mapbox://styles/mapbox/dark-v11`, reading the token from `NEXT_PUBLIC_MAPBOX_TOKEN`.
-- The component accepts these props:
-  ```ts
-  type MapMarker = {
-    id: string;
-    type: "incident" | "hydrant" | "chosen" | "oos";
-    lng: number;
-    lat: number;
-    label?: string;
-  };
-  type MapViewProps = {
-    center: [lng: number, lat: number];
-    zoom: number;
-    markers: MapMarker[];
-    routeGeometry?: GeoJSON.LineString;
-    className?: string;
-  };
+- `POST /api/hydrants/nearest` accepts `{ lat: number, lng: number, k?: number }` (default `k=3`). Returns **400** on missing or invalid coordinates.
+- Algorithm exactly per `prompt.html` §06:
+  1. Filter `Hydrant` rows to `inService === true AND lat IS NOT NULL AND lng IS NOT NULL`.
+  2. Sort by haversine distance from the candidate point.
+  3. Take the closest **10**.
+  4. Call Mapbox Directions Matrix (`/directions-matrix/v1/mapbox/driving`) with the candidate as `source`, those 10 as `destinations`. Request `annotations=duration,distance`.
+  5. Sort the 10 by routed `duration` (ascending). Return top `k` (default 3).
+  6. Also return the next **2 out-of-service candidates** within the haversine search radius as `flaggedOos` — haversine distance only, no Matrix call.
+- For the **#1** result only, fetch the full route geometry via `GET /directions/v5/mapbox/driving/{src};{dst}?geometries=geojson&overview=full`. Top 2 and 3 carry only distance + duration. `flaggedOos` carries only haversine distance.
+- Response shape:
+  ```json
+  {
+    "nearest": [
+      { "hydrant": {/* Hydrant row */}, "distanceM": 55, "durationS": 42, "geometry": { /* LineString */ } },
+      { "hydrant": {...}, "distanceM": 80, "durationS": 60 },
+      { "hydrant": {...}, "distanceM": 120, "durationS": 90 }
+    ],
+    "flaggedOos": [
+      { "hydrant": {...}, "distanceM": 125 },
+      { "hydrant": {...}, "distanceM": 150 }
+    ]
+  }
   ```
-- **Marker rendering** — uses native **Mapbox GL layers** (circle layers per type via filter on a single GeoJSON source). NOT HTML markers — they don't scale gracefully when the user zooms out and we'd be re-implementing what GL gives us for free. V1 visual fidelity is intentionally loose; HF-008 (results screen) is where we polish.
-- **Marker convention v1** (functional, not pixel-matched to `prompt.html` §03; styling pass deferred):
-  - `incident` — red circle, radius 12px
-  - `hydrant` — blue circle (`#3b82f6`), radius 8px. If a sibling `chosen` marker is present in the same `markers` array, in-service hydrants get a yellow stroke ring (1.5px) per the brief's "#2/#3 ringed yellow" rule.
-  - `chosen` — yellow circle, radius 14px, with a wider semi-transparent yellow halo (stroke 4px @ 40% opacity)
-  - `oos` — grey circle (`#6b7280`), radius 8px, 60% opacity
-- **Route polyline** (when `routeGeometry` is provided): a single line layer at 5px width, solid yellow. Functional only — the fancy "base 10px at 35% + dashed top 5px" double-stack is deferred to HF-008.
-- Demo / fixture route at `src/app/dev/mapview/page.tsx` renders one of each marker type plus a sample route geometry. The route renders only when `NODE_ENV === "development"` (404 in production builds — this is a dev-only fixture, not part of the user-facing app).
-- A Playwright spec opens the dev fixture, screenshots the map, and asserts on:
-  - **Component state surface** — the component exposes a hidden `<div data-hf-map-state>` with `data-marker-count`, `data-marker-types` (comma-separated sorted list of types present), `data-has-route` (`"true"` / `"false"`), `data-status` (`"loading" | "ready" | "error" | "no-token"`). The spec reads these attributes — native GL layers render on a WebGL canvas which the DOM can't query directly, so this attribute surface is the testable seam.
-  - All four marker types appear in `data-marker-types`
-  - Route source is registered when `routeGeometry` provided (`data-has-route === "true"`)
-  - No console errors during mount or marker updates
-  - Mounting + unmounting twice produces no errors (cleanup spec navigates between the dev page and `/` twice)
+- `MAPBOX_SECRET_TOKEN` is read **server-side only** — never appears in any response payload or client-bound code.
+- If the Matrix call fails: respond with **502** carrying `{ error: "matrix-failed", upstreamStatus, message }`. No silent fallback.
+- If the Directions v5 call fails for #1: return top 3 ranked by haversine instead, with `degraded: true` flag so the UI can render without the polyline. Compromise so the whole request doesn't fail because of a geometry call.
 
-## Visual reference
-- `prompt.html` §03 — palette, pin convention, type rules
-- `index.html` map screens (Screen 2 and Screen 4) for general feel
-- The marker convention is the source of truth; eyeball the screenshot against §03 in the confidence rubric
+## Test plan
+- `src/lib/geo.ts` — pure haversine function. Unit-test with known fixtures (NYC↔LA, antipodal, same-point=0).
+- `src/lib/mapbox.ts` — `getMatrix(source, destinations)` and `getRoute(source, destination)`. Unit-test mocked-fetch (URL shape, headers, error mapping).
+- `src/app/api/hydrants/nearest/route.ts` — integration spec hits the live endpoint with the seeded data layer. Mapbox calls go out for real — the seed concentrates hydrants in Gorham, ME, so calls are cheap.
+- Failing-first: integration spec is committed before the route handler exists.
 
 ## Out of scope
-- Wiring real data — no calls to `/api/health/db`, no Prisma reads. The fixture page hardcodes its `markers` array.
-- Click handlers on markers (HF-008 adds those)
-- Animated transitions (cluster expansion, fly-to). Future story.
-- Mobile gesture tuning. The component just needs to mount, render markers, and clean up.
-- Anything in `prisma/`, `src/lib/db.ts`, or `src/app/api/health/db/`.
+- The UI consuming this (HF-008)
+- Incident persistence (HF-006 will call this endpoint)
+- Caching the Matrix response (YAGNI for prototype)
+- Anything in `prisma/`, `src/components/`, `src/app/login/*`, `src/app/api/auth/*`, `src/app/api/health/db/*`
 
 ## Files this story owns
-- `src/components/MapView.tsx` — the component
-- `src/app/dev/mapview/page.tsx` — dev-only fixture
-- `tests/e2e/hf-004-mapview.spec.ts` — failing-first spec
-- `STORY.md`, `.claude-resume.md` (at worktree root)
+- `src/lib/geo.ts`
+- `src/lib/mapbox.ts`
+- `src/app/api/hydrants/nearest/route.ts`
+- `tests/unit/geo.test.ts`
+- `tests/unit/mapbox.test.ts`
+- `tests/e2e/hf-007-nearest-api.spec.ts`
+- `STORY.md`, `.claude-resume.md`
 
 ## Dependencies added
-- `mapbox-gl` v3.x (the official Mapbox GL JS library). Mapbox v3 ships its own TS types, no `@types/mapbox-gl` needed.
+- `vitest@^3` + `vitest.config.ts` — unit test runner (Playwright doesn't cover unit cases). New `test:unit` script.
 
 ## Task list
-1. Add `mapbox-gl` to dependencies; verify it loads as a client component (Mapbox GL JS does not support SSR, so the component MUST be `"use client"`).
-2. Write the failing Playwright spec at `tests/e2e/hf-004-mapview.spec.ts`. Asserts on marker presence, route source, console, and cleanup. Commit (TDD step 3).
-3. Build the dev fixture page at `src/app/dev/mapview/page.tsx` rendering one of each marker type around the Gorham, ME centroid (`43.6791, -70.4444`) plus a sample `LineString` between an incident pin and a chosen hydrant.
-4. Implement `MapView.tsx`:
-   - `"use client"` at the top
-   - Mount the Mapbox instance in `useEffect` with cleanup
-   - Read token from `process.env.NEXT_PUBLIC_MAPBOX_TOKEN`; surface a clear error in the DOM if missing
-   - Custom HTML markers via `new mapboxgl.Marker({ element })` — each marker type is its own JSX element with a `data-marker-type` attribute so the spec can count them
-   - On `routeGeometry` change: add/replace a GeoJSON source named `hf-route` plus two stacked `line` layers
-   - Listen for `map.on("error")` and re-emit to `console.error` so the spec catches Mapbox runtime errors too
-5. Style the four marker types per §03 — small inline `<div>`s with Tailwind utilities, no external CSS unless absolutely needed.
-6. Run the spec, take screenshots, score with the rubric.
-7. Iterate until ≥ 0.85.
-8. Spawn `reviewer`. No `security-auditor` — no auth/secret-touching surface (the public token is exposed-by-design).
+1. Add `vitest@^3`; minimal `vitest.config.ts`; wire `test:unit` script. Confirm harness boots.
+2. Write failing-first integration spec at `tests/e2e/hf-007-nearest-api.spec.ts`. Commit (TDD step 3).
+3. Implement `src/lib/geo.ts` + unit test.
+4. Implement `src/lib/mapbox.ts` + unit tests (mocked fetch).
+5. Implement the route handler. Read in-service+geocoded hydrants via Prisma, haversine pre-sort, top-10, Matrix call, duration sort, Directions for #1, flaggedOos from OOS rows.
+6. Run integration spec; should pass.
+7. Score against rubric (no Visual/A11y — reweight onto Functional + Robustness + Console).
+8. Reviewer + security-auditor in parallel (security pass because the secret token touches this surface).
 9. PR to `develop`.
 
 ## Confidence gate
-≥ 0.85. Visual dimension weighted heavily — this is the marquee component every later screen consumes.
+≥ 0.85. Functional + Robustness weighted heavily — this is the algorithmic core.
 
-## Port
-Dev server on `:3000` (Dev A's machine, no parallel HF-001 server here yet).
+## Performance notes
+- 454 geocoded hydrants. Haversine sort is microsecond-fast.
+- One Matrix call (1×10 = 10 elements) + one Directions call per request. Expected ~600-900ms end-to-end.
+- No caching. Real production would key by `(roundedIncidentCoord, hydrantSetVersion)` — defer.
