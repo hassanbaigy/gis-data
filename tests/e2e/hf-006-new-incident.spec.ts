@@ -1,13 +1,23 @@
 import { test, expect } from "@playwright/test";
+import { authedRequestContext, loginInContext } from "./helpers/auth";
 
 /**
  * HF-006 — /map/new form + /api/geocode + POST /api/incidents.
  *
  * Drives the full flow end-to-end against real Mapbox (geocode +
  * matrix + directions) and the seeded Gorham DB. ~1-2s per test.
+ *
+ * Every /map/* page and every Mapbox-touching API route is gated by
+ * HF-001's requireFirefighter() / readBadge(). The helpers in
+ * tests/e2e/helpers/auth.ts inject the demo badge cookie (0418) so tests
+ * don't have to drive the real /login flow.
  */
 
 test.describe("HF-006 new incident", () => {
+  test.beforeEach(async ({ context }) => {
+    await loginInContext(context);
+  });
+
   test("user fills the form and lands on /map/incident/[id]", async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on("console", (m) => {
@@ -79,9 +89,7 @@ test.describe("HF-006 backend wiring", () => {
   test("POST /api/incidents creates a row + returns nearest", async ({
     playwright,
   }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
     const res = await ctx.post("/api/incidents", {
       data: {
         address: "Main St, Gorham, ME 04038",
@@ -116,9 +124,7 @@ test.describe("HF-006 backend wiring", () => {
   test("POST /api/incidents rejects invalid bodies with 400", async ({
     playwright,
   }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
     // Missing address
     let res = await ctx.post("/api/incidents", {
       data: { lat: 43.6791, lng: -70.4444, type: "STRUCTURE", alarmLevel: 3 },
@@ -153,9 +159,7 @@ test.describe("HF-006 backend wiring", () => {
   });
 
   test("GET /api/geocode returns up to 5 results", async ({ playwright }) => {
-    const ctx = await playwright.request.newContext({
-      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
-    });
+    const ctx = await authedRequestContext(playwright);
     const res = await ctx.get("/api/geocode?q=Main+St+Gorham");
     expect(res.ok()).toBe(true);
     const body = (await res.json()) as {
@@ -174,5 +178,44 @@ test.describe("HF-006 backend wiring", () => {
     expect(text).not.toContain("sk.");
 
     await ctx.dispose();
+  });
+
+  test("all gated endpoints return 401 without auth cookie", async ({
+    playwright,
+  }) => {
+    // No cookie this time — a vanilla request context.
+    const ctx = await playwright.request.newContext({
+      baseURL: process.env.PW_BASE_URL ?? "http://localhost:3000",
+    });
+    expect(
+      (await ctx.post("/api/incidents", { data: {} })).status(),
+      "POST /api/incidents should 401",
+    ).toBe(401);
+    expect(
+      (await ctx.get("/api/incidents/anything")).status(),
+      "GET /api/incidents/[id] should 401",
+    ).toBe(401);
+    expect(
+      (await ctx.get("/api/geocode?q=Main")).status(),
+      "GET /api/geocode should 401",
+    ).toBe(401);
+    expect(
+      (await ctx.post("/api/hydrants/nearest", {
+        data: { lat: 43.6791, lng: -70.4444 },
+      })).status(),
+      "POST /api/hydrants/nearest should 401",
+    ).toBe(401);
+    await ctx.dispose();
+  });
+
+  test("unauthenticated GET /map/new redirects to /login", async ({ browser }) => {
+    // Fresh browser context with no cookie injection.
+    const fresh = await browser.newContext();
+    const page = await fresh.newPage();
+    const res = await page.goto("/map/new");
+    // Should land on /login after the redirect
+    expect(page.url()).toContain("/login");
+    expect(res?.ok()).toBe(true);
+    await fresh.close();
   });
 });

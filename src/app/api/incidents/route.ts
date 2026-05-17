@@ -15,6 +15,7 @@
  * Errors: 400 on body validation; 502 on Matrix failure or empty hydrant set.
  */
 import { NextResponse } from "next/server";
+import { readBadge } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isValidLat, isValidLng } from "@/lib/geo";
 import { MapboxError } from "@/lib/mapbox";
@@ -24,10 +25,6 @@ import {
 } from "@/lib/hydrants";
 
 export const dynamic = "force-dynamic";
-
-// TODO(HF-001-merge): gate with requireFirefighter() once auth lands.
-// For now we hardcode the badge-0418 firefighter from the seed.
-const DEMO_FIREFIGHTER_BADGE = "0418";
 
 const VALID_TYPES = new Set([
   "STRUCTURE",
@@ -49,6 +46,18 @@ type Body = {
 };
 
 export async function POST(req: Request) {
+  // ---------------------------- auth --------------------------------------
+  // Use readBadge() (returns null) rather than requireFirefighter() (which
+  // redirects) because route handlers shouldn't 307 — they should 401.
+  const badge = await readBadge();
+  if (!badge) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+  const firefighter = await prisma.firefighter.findUnique({ where: { badge } });
+  if (!firefighter) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
   // -------------------------- validate body --------------------------------
   let body: Body;
   try {
@@ -85,16 +94,7 @@ export async function POST(req: Request) {
   const unitId =
     typeof body.unitId === "string" && body.unitId.length > 0
       ? body.unitId
-      : "E-12";
-
-  // ------------- find or create the demo firefighter -----------------------
-  // TODO(HF-001-merge): replace with requireFirefighter() once auth lands;
-  // the firefighter id will come from the cookie.
-  const firefighter = await prisma.firefighter.upsert({
-    where: { badge: DEMO_FIREFIGHTER_BADGE },
-    create: { badge: DEMO_FIREFIGHTER_BADGE, unitId: "E-12" },
-    update: {},
-  });
+      : firefighter.unitId;
 
   // ------------- find nearest BEFORE creating so we have chosenHydrantId ---
   let nearestResult;
