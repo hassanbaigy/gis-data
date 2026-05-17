@@ -1,0 +1,92 @@
+// Hydrant Finder — data layer
+// Three models: Firefighter (the only user persona), Hydrant (real data
+// imported from /Users/hassan/Downloads/hydrants_clean.csv with geocoding
+// applied at enrichment time), Incident (filed by a Firefighter, optionally
+// linked to the chosen #1 Hydrant).
+//
+// SQLite + hardcoded URL is intentional for the prototype. Swap the
+// datasource block when moving to Postgres.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Firefighter {
+  id        String     @id @default(cuid())
+  badge     String     @unique
+  unitId    String     @default("E-12")
+  createdAt DateTime   @default(now())
+
+  incidents Incident[]
+}
+
+model Hydrant {
+  // Identity from the CSV (e.g. "GOD-HYD00340", "GODRY005")
+  id String @id
+
+  // Type taxonomy from the source data
+  type     String // "Pressurized" | "Dry Hydrant" | "Unknown"
+  category String // "Pressurized" | "Dry"
+
+  // Sparse fields — kept for completeness, often empty in source
+  make  String?
+  model String?
+
+  // Address fields from the CSV
+  address  String  // raw address line as shipped
+  location String? // descriptive landmark
+  street   String?
+  city     String?
+  state    String?
+  zip      String?
+
+  // Operational status — flipping this excludes the hydrant from nearest-search
+  inService Boolean @default(true)
+
+  // Geocoding (filled by scripts/enrich-hydrants.ts at enrichment time)
+  lat        Float?
+  lng        Float?
+  geocodedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  chosenForIncidents Incident[] @relation("ChosenHydrant")
+
+  @@index([inService])
+  @@index([lat, lng])
+}
+
+model Incident {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Incident location (typed by the firefighter at the scene)
+  address String
+  lat     Float
+  lng     Float
+
+  // Classification
+  type       String // STRUCTURE | VEHICLE | BRUSH | MEDICAL | HAZMAT | OTHER
+  alarmLevel Int    // 1-5
+  notes      String?
+
+  // Snapshot of the unit at creation time (firefighter may move units later)
+  unitId String
+
+  // Who filed it
+  firefighter   Firefighter @relation(fields: [firefighterId], references: [id])
+  firefighterId String
+
+  // Which hydrant ended up being #1 at the time (snapshot — may go OOS later)
+  chosenHydrant   Hydrant? @relation("ChosenHydrant", fields: [chosenHydrantId], references: [id])
+  chosenHydrantId String?
+
+  @@index([createdAt])
+  @@index([firefighterId])
+  @@index([type])
+}
