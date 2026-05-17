@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Hydrant Finder · Build Prompt for Claude Code</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --red: #E11D29;
+      --yellow: #FCD34D;
+      --black: #0a0a0a;
+      --ink: #15181f;
+      --smoke: #2a2f3a;
+      --fog: #9aa3b2;
+      --paper: #f4f2eb;
+      --display: "Barlow Condensed", Oswald, system-ui, sans-serif;
+      --ui: Inter, system-ui, -apple-system, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--paper); color: var(--black); font-family: var(--ui); }
+    body { -webkit-font-smoothing: antialiased; }
+
+    .wrap { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+
+    /* HERO */
+    .hero { background: var(--black); color: #fff; position: relative; overflow: hidden; }
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: repeating-linear-gradient(45deg, transparent 0 18px, rgba(252,211,77,0.05) 18px 36px);
+      pointer-events: none;
+    }
+    .hero-inner { padding: 56px 0 48px; position: relative; }
+    .kicker {
+      display: inline-block; background: var(--yellow); color: var(--black);
+      font-weight: 800; font-size: 11px; letter-spacing: 0.18em; padding: 4px 10px;
+    }
+    .hero h1 {
+      font-family: var(--display); font-weight: 800; font-size: 88px; line-height: 0.88;
+      letter-spacing: -0.02em; margin: 16px 0 0;
+    }
+    .hero h1 .accent { color: var(--yellow); }
+    .hero p.lede { color: rgba(255,255,255,0.7); font-size: 17px; line-height: 1.55; max-width: 640px; margin: 18px 0 0; }
+    .hero-meta {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+      background: var(--smoke); border: 1px solid var(--smoke); margin-top: 40px;
+    }
+    .hero-meta > div { background: var(--black); padding: 14px 16px; }
+    .hero-meta .l { color: var(--fog); font-size: 10px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+    .hero-meta .v { font-family: var(--display); font-weight: 700; font-size: 22px; margin-top: 4px; letter-spacing: 0.02em; }
+
+    /* COPY BAR */
+    .copy-bar {
+      background: var(--ink); color: #fff; padding: 18px 0;
+      position: sticky; top: 0; z-index: 50;
+      border-bottom: 2px solid var(--yellow);
+    }
+    .copy-bar .wrap { display: flex; align-items: center; gap: 14px; }
+    .copy-bar .lbl { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: 0.02em; }
+    .copy-bar .sub { color: var(--fog); font-size: 13px; flex: 1; }
+    .copy-bar button {
+      background: var(--red); color: #fff; border: none; padding: 12px 18px;
+      font-family: var(--display); font-weight: 800; font-size: 18px;
+      letter-spacing: 0.04em; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .copy-bar button:hover { background: #c91320; }
+    .copy-bar button.ok { background: var(--yellow); color: var(--black); }
+
+    /* MAIN */
+    main { padding: 56px 0 100px; }
+    section { margin-bottom: 56px; }
+
+    .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+    .sec-num {
+      font-family: var(--display); font-weight: 800; font-size: 36px;
+      letter-spacing: -0.01em; color: var(--red); line-height: 1;
+      width: 64px; flex-shrink: 0; padding-top: 4px;
+    }
+    .sec-title { font-family: var(--display); font-weight: 800; font-size: 38px; letter-spacing: -0.01em; line-height: 1; }
+    .sec-rule { flex: 1; height: 3px; background: var(--black); align-self: center; margin-bottom: 4px; }
+
+    .sec-body { padding-left: 78px; }
+    .sec-body p { font-size: 15px; line-height: 1.65; margin: 0 0 12px; }
+    .sec-body p + p { margin-top: 0; }
+    .sec-body h3 {
+      font-family: var(--ui); font-weight: 800; font-size: 13px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--black); margin: 22px 0 10px;
+    }
+    .sec-body ul { padding-left: 22px; margin: 0 0 16px; }
+    .sec-body li { margin: 6px 0; line-height: 1.5; }
+    .sec-body li code, .sec-body p code {
+      font-family: var(--mono); font-size: 12px; background: rgba(10,10,10,0.07);
+      padding: 1px 5px; border-radius: 2px;
+    }
+    .sec-body strong { font-weight: 700; }
+
+    /* Code blocks */
+    pre {
+      background: var(--black); color: #f0f0f0; padding: 18px 20px; margin: 14px 0 18px;
+      border-left: 3px solid var(--yellow);
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+      overflow-x: auto; white-space: pre; tab-size: 2;
+    }
+    pre .k { color: #fca5a5; }
+    pre .s { color: #a7f3d0; }
+    pre .c { color: #6b7280; font-style: italic; }
+    pre .n { color: #fcd34d; }
+
+    /* File tree */
+    .tree { font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+      background: #fff; border: 1.5px solid var(--black); padding: 16px 18px; margin: 12px 0; }
+    .tree .dir { font-weight: 700; }
+    .tree .ann { color: var(--fog); font-style: italic; }
+
+    /* Spec cards (per-screen) */
+    .spec {
+      background: #fff; border: 1.5px solid var(--black); margin: 0 0 14px;
+    }
+    .spec-head {
+      background: var(--black); color: #fff; padding: 12px 16px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .spec-head .num {
+      font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--yellow);
+      letter-spacing: 0.02em; line-height: 1; width: 24px;
+    }
+    .spec-head .ttl {
+      font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: 0.02em; line-height: 1; flex: 1;
+    }
+    .spec-head .route {
+      font-family: var(--mono); font-size: 11px; color: var(--yellow); font-weight: 700;
+    }
+    .spec-body { padding: 14px 18px 16px; }
+    .spec-body .row { display: grid; grid-template-columns: 110px 1fr; gap: 8px 18px; margin: 6px 0; }
+    .spec-body .row .l { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fog); padding-top: 3px; }
+    .spec-body .row .v { font-size: 14px; line-height: 1.5; }
+    .spec-body ul { padding-left: 18px; margin: 4px 0; }
+
+    /* Pill chips */
+    .chip {
+      display: inline-block; background: var(--black); color: #fff;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+      padding: 3px 8px; margin-right: 4px;
+    }
+    .chip.y { background: var(--yellow); color: var(--black); }
+    .chip.r { background: var(--red); color: #fff; }
+    .chip.o { background: transparent; color: var(--black); border: 1px solid var(--black); padding: 2px 7px; }
+
+    /* Color swatches */
+    .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+    .sw { padding: 16px 14px; border: 1px solid rgba(0,0,0,0.1); }
+    .sw .nm { font-family: var(--display); font-weight: 800; font-size: 20px; }
+    .sw .hx { font-family: var(--mono); font-size: 12px; opacity: 0.8; margin-top: 4px; }
+
+    /* Footer */
+    footer { background: var(--black); color: #fff; padding: 40px 0; margin-top: 40px; }
+    footer .wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    footer .stamp {
+      border: 2px solid var(--yellow); color: var(--yellow);
+      padding: 8px 14px; font-family: var(--display); font-weight: 800;
+      letter-spacing: 0.04em; font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-inner">
+    <span class="kicker">CLAUDE CODE · BUILD BRIEF</span>
+    <h1>HYDRANT<br/>FINDER<span class="accent">.</span></h1>
+    <p class="lede">A Next.js prototype for fire-department crews. A firefighter logs in, drops an incident, and gets the three nearest hydrants ranked by routed driving distance — with the route from the top pick drawn on a Mapbox GL map. Designed for phone + truck-mounted tablet.</p>
+    <div class="hero-meta">
+      <div><div class="l">Stack</div><div class="v">Next.js · TS</div></div>
+      <div><div class="l">UI</div><div class="v">Tailwind</div></div>
+      <div><div class="l">Map</div><div class="v">Mapbox GL JS</div></div>
+      <div><div class="l">Data</div><div class="v">Prisma · SQLite</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="copy-bar">
+  <div class="wrap">
+    <span class="lbl">PROMPT</span>
+    <span class="sub">Copy the full markdown brief and paste it into your Claude Code session.</span>
+    <button id="copyBtn">COPY MARKDOWN
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    </button>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <!-- 1 ROLE -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">01</div>
+      <div class="sec-title">ROLE &amp; CONTEXT</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <p>You are building a <strong>working prototype</strong> of a fire-department field app called <strong>Hydrant Finder</strong>. Real fire crews will not use this build — it is intended for an internal demo. The goal is for an on-duty firefighter, sitting in a truck, to:</p>
+      <ol>
+        <li>Open the app on a phone or truck-mounted tablet</li>
+        <li>Mock-log-in with a badge number + PIN</li>
+        <li>See a map of past incidents and a big <strong>+ NEW INCIDENT</strong> button</li>
+        <li>Tap it, type the incident address, pick a type / alarm level, hit <strong>FIND HYDRANTS</strong></li>
+        <li>See the <strong>3 nearest in-service hydrants</strong>, ranked by routed driving distance, with the route from #1 drawn on the map</li>
+      </ol>
+      <p>You are <strong>not</strong> building a multi-tenant production system. Skip OAuth, audit logs, accessibility audits, i18n. Do build a clean dark-mode UI with big tap targets and the visual style spelled out below.</p>
+    </div>
+  </section>
+
+  <!-- 2 STACK -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">02</div>
+      <div class="sec-title">STACK</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <ul>
+        <li><strong>Next.js (latest, App Router)</strong> with <strong>TypeScript</strong> — <code>npx create-next-app@latest hydrant-finder --ts --tailwind --app --eslint --src-dir=false</code></li>
+        <li><strong>Tailwind CSS</strong> for all styling. No CSS modules, no styled-components. Use <code>tailwind.config.ts</code> to register the colors + font families below.</li>
+        <li><strong>Mapbox GL JS</strong> (<code>mapbox-gl</code> v3 + <code>@types/mapbox-gl</code>) — load token from <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in <code>.env.local</code>.</li>
+        <li><strong>Prisma + SQLite</strong> for incidents. Schema below. Run <code>prisma db push</code> on bootstrap; ship a <code>seed.ts</code> with 6 example incidents around the hydrant dataset.</li>
+        <li><strong>Supabase</strong> client is installed and wired (env vars stubbed) <em>but disabled in this prototype</em>. Leave a <code>lib/supabase.ts</code> file that exports the client so it's a one-line swap from SQLite later. Auth is mocked.</li>
+        <li><strong>Mapbox Directions API</strong> for the routed driving distance. Use <code>profile=driving</code>. No fallback — if the call fails, surface the error in the UI.</li>
+        <li><strong>No other UI libraries.</strong> No shadcn, no Radix, no Headless UI. Build the primitives yourself — the design demands custom typography &amp; chrome that off-the-shelf kits will fight you on.</li>
+        <li><strong>Fonts</strong> via <code>next/font/google</code>: <code>Barlow Condensed</code> (700/800) as <code>--font-display</code>, <code>Inter</code> (400/500/600/700/800) as <code>--font-ui</code>, <code>JetBrains Mono</code> (400/500/700) as <code>--font-mono</code>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3 AESTHETIC -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">03</div>
+      <div class="sec-title">VISUAL SYSTEM</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <p><strong>Bold emergency.</strong> Matte black canvas, alert red, safety yellow accent. Heavy weights. Square corners (max <code>rounded-sm</code>). No gradients, no soft shadows, no glassy blur. The vibe is dispatch console / fire-truck dashboard — not consumer app.</p>
+
+      <div class="palette">
+        <div class="sw" style="background:#0a0a0a;color:#fff"><div class="nm">BLACK</div><div class="hx">#0a0a0a</div></div>
+        <div class="sw" style="background:#E11D29;color:#fff"><div class="nm">RED</div><div class="hx">#E11D29</div></div>
+        <div class="sw" style="background:#FCD34D;color:#0a0a0a"><div class="nm">YELLOW</div><div class="hx">#FCD34D</div></div>
+        <div class="sw" style="background:#f4f2eb;color:#0a0a0a"><div class="nm">PAPER</div><div class="hx">#f4f2eb</div></div>
+      </div>
+
+      <h3>Type rules</h3>
+      <ul>
+        <li><code>font-display</code> (Barlow Condensed 800) — section heads, numerics, large CTAs. <em>letter-spacing: -0.02em.</em></li>
+        <li><code>font-ui</code> (Inter) — body, labels, secondary text. Labels use <code>uppercase tracking-[0.16em] text-[10px] font-extrabold</code>.</li>
+        <li><code>font-mono</code> (JetBrains Mono) — badge numbers, hydrant IDs, coordinates, timestamps. Always.</li>
+        <li>Never go below <strong>14px</strong> on a phone screen. Hit targets are at least <strong>56px</strong>.</li>
+      </ul>
+
+      <h3>Hydrant pin convention</h3>
+      <ul>
+        <li>Blue dot (<code>#3b82f6</code>) — in-service pressurized</li>
+        <li>Blue dot, ringed yellow — also in-service, just stylistic for #2/#3 nearest</li>
+        <li><strong>Yellow halo + yellow dot</strong> — the #1 chosen hydrant (the one being routed to)</li>
+        <li>Grey dot with an X through it — out-of-service / dry without pressure (still shown, but flagged)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4 FILE TREE -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">04</div>
+      <div class="sec-title">FILE TREE</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <div class="tree">
+<span class="dir">app/</span>
+  <span class="dir">layout.tsx</span>                <span class="ann"># root layout, font vars, body bg=#0a0a0a</span>
+  <span class="dir">page.tsx</span>                  <span class="ann"># redirect → /login or /map based on cookie</span>
+  <span class="dir">login/page.tsx</span>            <span class="ann"># Screen 1</span>
+  <span class="dir">map/page.tsx</span>              <span class="ann"># Screen 2 (home)</span>
+  <span class="dir">map/new/page.tsx</span>          <span class="ann"># Screen 3 (new incident form)</span>
+  <span class="dir">map/incident/[id]/page.tsx</span> <span class="ann"># Screen 4 (results + route)</span>
+  <span class="dir">history/page.tsx</span>          <span class="ann"># Screen 5 (filterable past incidents)</span>
+  <span class="dir">api/</span>
+    <span class="dir">incidents/route.ts</span>      <span class="ann"># GET (list) · POST (create)</span>
+    <span class="dir">incidents/[id]/route.ts</span> <span class="ann"># GET · DELETE</span>
+    <span class="dir">hydrants/nearest/route.ts</span> <span class="ann"># POST {lat,lng} → top 3 routed</span>
+    <span class="dir">geocode/route.ts</span>        <span class="ann"># GET ?q= → forward geocode (Mapbox)</span>
+<span class="dir">components/</span>
+  <span class="dir">MapView.tsx</span>               <span class="ann"># Mapbox GL wrapper, themed dark</span>
+  <span class="dir">IncidentForm.tsx</span>          <span class="ann"># typed form (address + meta)</span>
+  <span class="dir">HydrantCard.tsx</span>           <span class="ann"># the ranked card</span>
+  <span class="dir">SosButton.tsx · TopBar.tsx · BottomSheet.tsx · Chip.tsx</span>
+<span class="dir">lib/</span>
+  <span class="dir">db.ts</span>                     <span class="ann"># prisma client singleton</span>
+  <span class="dir">supabase.ts</span>                <span class="ann"># stubbed; not active</span>
+  <span class="dir">mapbox.ts</span>                  <span class="ann"># directions + geocode helpers</span>
+  <span class="dir">hydrants.ts</span>                <span class="ann"># load + filter the local dataset</span>
+  <span class="dir">auth.ts</span>                    <span class="ann"># mock badge cookie helpers</span>
+<span class="dir">prisma/</span>
+  <span class="dir">schema.prisma · seed.ts</span>
+<span class="dir">public/data/</span>
+  <span class="dir">hydrants.geojson</span>          <span class="ann"># bundled dataset (see §5)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 DATA -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">05</div>
+      <div class="sec-title">DATA MODELS</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+
+      <h3>Hydrant dataset (read-only, shipped in <code>/public/data/hydrants.geojson</code>)</h3>
+      <p>GeoJSON <code>FeatureCollection</code> of <code>Point</code> features. Each feature has these properties (matching the dataset already in hand):</p>
+<pre>{
+  <span class="s">"type"</span>: <span class="s">"Feature"</span>,
+  <span class="s">"geometry"</span>: { <span class="s">"type"</span>: <span class="s">"Point"</span>, <span class="s">"coordinates"</span>: [<span class="n">-74.0060</span>, <span class="n">40.7128</span>] },
+  <span class="s">"properties"</span>: {
+    <span class="s">"id"</span>:         <span class="s">"H-1156"</span>,
+    <span class="s">"address"</span>:    <span class="s">"420 Elm St"</span>,
+    <span class="s">"city"</span>:       <span class="s">"New York"</span>,
+    <span class="s">"state"</span>:      <span class="s">"NY"</span>,
+    <span class="s">"zip"</span>:        <span class="s">"10013"</span>,
+    <span class="s">"in_service"</span>: <span class="k">true</span>,
+    <span class="s">"category"</span>:   <span class="s">"pressurized"</span>   <span class="c">// "pressurized" | "dry"</span>
+  }
+}</pre>
+      <p>If the user has not yet supplied a real dataset, generate a plausible <strong>40-feature</strong> sample around <code>(40.7128, -74.0060)</code> with a mix of pressurized / dry and ~10% out-of-service. <strong>Do not</strong> hit any external hydrant API.</p>
+
+      <h3>Prisma schema (<code>prisma/schema.prisma</code>)</h3>
+<pre><span class="k">datasource</span> db { provider = <span class="s">"sqlite"</span>; url = <span class="s">"file:./dev.db"</span> }
+<span class="k">generator</span> client { provider = <span class="s">"prisma-client-js"</span> }
+
+<span class="k">model</span> Incident {
+  id          <span class="n">String</span>   @id @default(cuid())
+  createdAt   <span class="n">DateTime</span> @default(now())
+  address     <span class="n">String</span>
+  lat         <span class="n">Float</span>
+  lng         <span class="n">Float</span>
+  type        <span class="n">String</span>   <span class="c">// STRUCTURE | VEHICLE | BRUSH | MEDICAL | HAZMAT | OTHER</span>
+  alarmLevel  <span class="n">Int</span>      <span class="c">// 1-5</span>
+  notes       <span class="n">String</span>?
+  unitId      <span class="n">String</span>   <span class="c">// e.g. "E-12"</span>
+  badge       <span class="n">String</span>   <span class="c">// from mock auth cookie</span>
+  chosenHydrantId <span class="n">String</span>? <span class="c">// snapshot at create time</span>
+}</pre>
+
+      <h3>Mock auth</h3>
+      <p>Login form accepts <em>any</em> 4-digit badge + 4-digit PIN. On submit, set an <code>hf_badge</code> http-only cookie with the badge value. <code>lib/auth.ts</code> exposes <code>requireBadge()</code> that reads it in server components / route handlers and redirects to <code>/login</code> if missing.</p>
+    </div>
+  </section>
+
+  <!-- 6 API -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">06</div>
+      <div class="sec-title">API CONTRACTS</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+
+      <h3>POST <code>/api/incidents</code></h3>
+      <p>Body: <code>{ address, lat, lng, type, alarmLevel, notes?, unitId }</code>. Server calls <code>findNearestHydrants(lat, lng)</code>, stores the chosen hydrant id, returns <code>{ id, chosenHydrantId, hydrants: [...top3 with distance + duration] }</code>.</p>
+
+      <h3>POST <code>/api/hydrants/nearest</code></h3>
+      <p>Body: <code>{ lat, lng, k?: number = 3 }</code>. Algorithm:</p>
+      <ol>
+        <li>Filter the dataset to <code>in_service === true</code>.</li>
+        <li>Sort by <strong>haversine</strong> distance to the candidate (cheap pre-filter).</li>
+        <li>Take the closest <strong>10</strong>.</li>
+        <li>Call <strong>Mapbox Directions Matrix</strong> (<code>/directions-matrix/v1/mapbox/driving</code>) with the incident as the source and those 10 as destinations. Get routed driving distance + duration for each.</li>
+        <li>Sort by <strong>duration</strong>. Return top <code>k</code>.</li>
+        <li>Also return the next 2 candidates flagged as out-of-service (for the "flagged" UI) — <em>do not</em> route through the matrix; just attach haversine distance.</li>
+      </ol>
+      <p>Response shape:</p>
+<pre>{
+  <span class="s">"nearest"</span>: [
+    { <span class="s">"hydrant"</span>: {...feature props + coords}, <span class="s">"distanceM"</span>: <span class="n">55</span>, <span class="s">"durationS"</span>: <span class="n">42</span>, <span class="s">"geometry"</span>: {<span class="c">/* GeoJSON LineString from Directions API */</span>} },
+    ...
+  ],
+  <span class="s">"flaggedOos"</span>: [ { <span class="s">"hydrant"</span>: {...}, <span class="s">"distanceM"</span>: <span class="n">125</span> }, ... ]
+}</pre>
+      <p>Only fetch the <strong>full route geometry</strong> for the #1 result (one extra <code>/directions/v5</code> call). The other two only need distance + duration.</p>
+
+      <h3>GET <code>/api/geocode?q=…</code></h3>
+      <p>Proxy Mapbox Geocoding v6 (server-side, never expose token to client). Cap to <strong>5 results</strong>. Return <code>{ results: [{ placeName, lat, lng }] }</code>.</p>
+
+      <h3>GET <code>/api/incidents</code></h3>
+      <p>Query: <code>?since=7d&amp;type=&amp;unitId=</code>. Returns <code>{ incidents: [...] }</code> ordered <code>createdAt DESC</code>.</p>
+    </div>
+  </section>
+
+  <!-- 7 SCREENS -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">07</div>
+      <div class="sec-title">SCREEN SPECS</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <p>The attached mockups (see <code>index.html</code>) are the source of truth for layout. Build to <strong>Variation A — Bottom Sheet</strong>; the other two variations are reference for tone, not separate implementations.</p>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">1</div><div class="ttl">LOGIN</div><div class="route">/login</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Layout</div><div class="v">Centered single column, 24px gutters. Brand block at top: 56px red square w/ flame icon, "HYDRANT FINDER" in display. Subtitle "FDNY · v0.1 PROTO" mono fog.</div></div>
+          <div class="row"><div class="l">Fields</div><div class="v"><strong>Badge Number</strong> (mono 22px, 4 digits) · <strong>PIN</strong> (4-cell pad, yellow border on active cell). Submit = red CTA "SIGN IN →" with 0 8px 32px rgba(225,29,41,0.35) shadow.</div></div>
+          <div class="row"><div class="l">Behavior</div><div class="v">Any 4+4 digits succeeds; sets <code>hf_badge</code> cookie; redirects to <code>/map</code>.</div></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">2</div><div class="ttl">HOME / MAP</div><div class="route">/map</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Layout</div><div class="v">Full-bleed Mapbox map (dark style: <code>mapbox://styles/mapbox/dark-v11</code>). Top: badge plate (left) + SOS button (right, yellow-bordered 48×48). Below: filter chip rail ("ALL · 6", "7 DAYS", "UNIT E-12"). Bottom: glassless dark hint card ("LAST INCIDENT · 6 HRS AGO" + address + hydrant count).</div></div>
+          <div class="row"><div class="l">CTA</div><div class="v">Persistent footer: full-width red <strong>+ NEW INCIDENT</strong> (24px display) + 64px-wide list icon button → <code>/history</code>.</div></div>
+          <div class="row"><div class="l">Pins</div><div class="v">Past incidents shown as red dots w/ 14px translucent halo. Hydrants <em>not</em> shown on this screen — they appear once an incident is in context.</div></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">3</div><div class="ttl">NEW INCIDENT</div><div class="route">/map/new</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Header</div><div class="v">Back button (40×40 smoke-bordered) · "NEW INCIDENT" display · "STEP 1/2" mono fog.</div></div>
+          <div class="row"><div class="l">Address</div><div class="v">Search input w/ yellow border + magnifier icon. As user types, debounce 250ms and hit <code>/api/geocode?q=</code>. Render up to 3 results below the input as cards (pin icon + primary + secondary line). Selected result shows yellow highlight + arrow.</div></div>
+          <div class="row"><div class="l">Type</div><div class="v">3-col grid of 6 buttons: STRUCTURE / VEHICLE / BRUSH / MEDICAL / HAZMAT / OTHER. Selected = red fill. Square, 14px display, no rounded.</div></div>
+          <div class="row"><div class="l">Alarm</div><div class="v">5-cell row (1–5). Selected level = yellow fill (black text). Default 2.</div></div>
+          <div class="row"><div class="l">Meta</div><div class="v">2-col: UNIT (editable, prefill from auth context "E-12") + TIME (auto, mono, "14:22 · AUTO" disabled).</div></div>
+          <div class="row"><div class="l">Submit</div><div class="v">Footer red CTA "FIND HYDRANTS →". POST <code>/api/incidents</code>, then push <code>/map/incident/[id]</code>.</div></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">4</div><div class="ttl">RESULTS · ROUTE</div><div class="route">/map/incident/[id]</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Map</div><div class="v">Centered on incident. Render: <strong>incident pin</strong> (red teardrop, "!" glyph), <strong>top 3 hydrants</strong> (yellow halo on #1), <strong>route polyline</strong> from #1 to incident — base layer at 10px @ 35% opacity, dashed top layer at 5px solid yellow. Out-of-service hydrants in radius rendered with grey X marker (do not route them).</div></div>
+          <div class="row"><div class="l">Top</div><div class="v">Red pulsing "ACTIVE · MM:SS" pill (timer counts up from incident.createdAt). SOS top-right.</div></div>
+          <div class="row"><div class="l">Sheet</div><div class="v">Bottom sheet with drag handle. Header "NEAREST HYDRANTS · 3 of N". Three <code>HydrantCard</code>s: big rank digit, hydrant id (mono), address, distance (display), ETA (yellow mono). #1 has 1.5px yellow border + warmer bg. Out-of-service get a red "OUT" chip.</div></div>
+          <div class="row"><div class="l">Actions</div><div class="v">Red <strong>NAVIGATE</strong> CTA (opens platform navigation — for prototype, <code>maps:?daddr=lat,lng</code> link works on iOS) + secondary list icon → expanded hydrant list modal.</div></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">5</div><div class="ttl">HISTORY</div><div class="route">/history</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Layout</div><div class="v">Map (incidents only, no hydrants) + filter pill bar (time: 7D/30D/ALL · type: STRUCTURE/VEHICLE/…/+3). Active filter = yellow chip, inactive = smoke chip. Bottom sheet lists incidents w/ time-ago, address, type+level chips, chevron → re-opens that incident at <code>/map/incident/[id]</code>.</div></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-head"><div class="num">+</div><div class="ttl">TABLET (LANDSCAPE)</div><div class="route">@media (min-width:900px)</div></div>
+        <div class="spec-body">
+          <div class="row"><div class="l">Layout</div><div class="v">Split: 440px dispatch rail (left) + map (right). Same components — just re-flow with a single Tailwind <code>lg:</code> breakpoint. Don't fork screens.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 BUILD ORDER -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">08</div>
+      <div class="sec-title">BUILD ORDER</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <ol>
+        <li>Scaffold Next.js project, wire fonts &amp; Tailwind theme. Smoke-test on <code>/</code>.</li>
+        <li>Drop in <code>public/data/hydrants.geojson</code> (real or generated) + <code>lib/hydrants.ts</code> loader.</li>
+        <li>Prisma init, migrate, seed.</li>
+        <li>Mock auth + <code>/login</code> screen end-to-end.</li>
+        <li><code>MapView</code> component with dark Mapbox style + the 4 marker types.</li>
+        <li><code>/map</code> home with past-incident pins from DB.</li>
+        <li><code>/map/new</code> form + <code>/api/geocode</code> proxy.</li>
+        <li>Nearest-hydrant API + <code>HydrantCard</code> + <code>/map/incident/[id]</code> with the route polyline.</li>
+        <li><code>/history</code> with filters.</li>
+        <li>Tablet breakpoint pass.</li>
+      </ol>
+      <p>Commit after each step. Don't introduce a new dependency without telling me first.</p>
+    </div>
+  </section>
+
+  <!-- 9 ACCEPTANCE -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">09</div>
+      <div class="sec-title">ACCEPTANCE</div>
+      <div class="sec-rule"></div>
+    </div>
+    <div class="sec-body">
+      <p>The prototype is "done" when, on a fresh clone:</p>
+      <ul>
+        <li><code>pnpm install &amp;&amp; pnpm prisma db push &amp;&amp; pnpm prisma db seed &amp;&amp; pnpm dev</code> just works.</li>
+        <li>I can log in with <code>0418 / 1234</code>, see <strong>6 seeded past incidents</strong> on a dark map.</li>
+        <li>I can tap <strong>+ NEW INCIDENT</strong>, type "418 Elm", pick the geocoded result, hit <strong>FIND HYDRANTS</strong>, and within ~1.5s I see the top 3 hydrants ranked by routed driving duration with a yellow dashed route drawn from #1 to my incident.</li>
+        <li>An out-of-service hydrant inside the search radius is shown with the grey X marker and never appears in the top-3 list (it appears in <code>flaggedOos</code>).</li>
+        <li>The SOS button is reachable from every screen (top-right, 48–56px square, yellow-bordered).</li>
+        <li>Resizing the browser to landscape ≥900px wide re-flows <code>/map/incident/[id]</code> into the dispatch-rail layout.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="stamp">REV 1 · 2026-05-17</span>
+    <span style="color:rgba(255,255,255,0.5);font-size:13px">Hand this to Claude Code with the mockup HTML attached. Iterate on screens one at a time.</span>
+  </div>
+</footer>
+
+<!-- Markdown payload for the copy button -->
+<script type="text/plain" id="md-source">
+# Hydrant Finder — Build Brief
+
+You are building a working Next.js prototype called **Hydrant Finder**. A firefighter logs in, drops an incident location, and gets the three nearest in-service hydrants ranked by routed driving distance, with the route from the top pick drawn on a dark-themed Mapbox GL map.
+
+## Stack
+- Next.js (latest, App Router) + TypeScript
+- Tailwind CSS (no shadcn/Radix/Headless UI — build primitives yourself)
+- Mapbox GL JS v3 (`NEXT_PUBLIC_MAPBOX_TOKEN` in `.env.local`)
+- Mapbox Directions Matrix + Directions APIs for routing (server-side; never expose token to client)
+- Prisma + SQLite (file:./dev.db) for incidents
+- Supabase client stubbed in `lib/supabase.ts` (not active — leave a one-line swap path)
+- Fonts via `next/font/google`: Barlow Condensed (700/800) → --font-display, Inter (400-800) → --font-ui, JetBrains Mono → --font-mono
+
+## Visual system — Bold emergency
+- Palette: BLACK #0a0a0a, RED #E11D29, YELLOW #FCD34D, PAPER #f4f2eb
+- Square corners (max rounded-sm). No gradients. No glass blur. Heavy weights.
+- Type: display for headings/numerics/CTAs (letter-spacing -0.02em), ui for body, mono for badge numbers/coordinates/hydrant IDs/timestamps.
+- Labels: uppercase tracking-[0.16em] text-[10px] font-extrabold.
+- Minimum body 14px on phone. Hit targets ≥56px.
+- Hydrant pin convention: blue dot = in-service · yellow halo + yellow fill = #1 chosen · grey dot with X = out-of-service.
+
+## File tree
+app/
+  layout.tsx
+  page.tsx                       # redirect → /login or /map
+  login/page.tsx
+  map/page.tsx
+  map/new/page.tsx
+  map/incident/[id]/page.tsx
+  history/page.tsx
+  api/incidents/route.ts         # GET, POST
+  api/incidents/[id]/route.ts    # GET, DELETE
+  api/hydrants/nearest/route.ts  # POST {lat,lng,k?} → top 3 routed
+  api/geocode/route.ts           # GET ?q= → forward geocode
+components/
+  MapView.tsx
+  IncidentForm.tsx
+  HydrantCard.tsx
+  SosButton.tsx · TopBar.tsx · BottomSheet.tsx · Chip.tsx
+lib/
+  db.ts · supabase.ts · mapbox.ts · hydrants.ts · auth.ts
+prisma/schema.prisma · prisma/seed.ts
+public/data/hydrants.geojson
+
+## Data
+
+### Hydrant dataset — `public/data/hydrants.geojson`
+GeoJSON FeatureCollection of Point features. Properties per feature:
+- id (string, e.g. "H-1156")
+- address (string)
+- city, state, zip (string)
+- in_service (boolean)
+- category ("pressurized" | "dry")
+
+If no real dataset is provided, generate ~40 plausible features around (40.7128, -74.0060) with ~10% out-of-service and a mix of pressurized/dry.
+
+### Prisma schema
+model Incident {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  address         String
+  lat             Float
+  lng             Float
+  type            String   // STRUCTURE | VEHICLE | BRUSH | MEDICAL | HAZMAT | OTHER
+  alarmLevel      Int      // 1-5
+  notes           String?
+  unitId          String   // e.g. "E-12"
+  badge           String
+  chosenHydrantId String?
+}
+
+### Mock auth
+Any 4-digit badge + 4-digit PIN succeeds. Set http-only cookie `hf_badge` with the badge. `lib/auth.ts` exposes `requireBadge()` for server components / route handlers.
+
+## API contracts
+
+POST /api/incidents
+  body: { address, lat, lng, type, alarmLevel, notes?, unitId }
+  → creates the row, calls findNearestHydrants(lat,lng), stores chosenHydrantId, returns { id, chosenHydrantId, hydrants: top3 }
+
+POST /api/hydrants/nearest
+  body: { lat, lng, k?: number = 3 }
+  algorithm:
+    1. Filter dataset to in_service === true
+    2. Sort by haversine to candidate (cheap pre-filter)
+    3. Take closest 10
+    4. Call Mapbox Directions Matrix (profile=driving) with incident as source and those 10 as destinations
+    5. Sort by duration; return top k
+    6. Also return the next 2 out-of-service candidates flagged (haversine only) as `flaggedOos`
+  Only fetch the FULL route geometry (one extra /directions/v5 call) for the #1 result.
+
+GET /api/geocode?q=…
+  Proxy Mapbox Geocoding v6 server-side. Cap 5 results. Return { results: [{ placeName, lat, lng }] }.
+
+GET /api/incidents?since=7d&type=&unitId=
+  Returns { incidents: [...] } ordered createdAt DESC.
+
+## Screens (build to Variation A — Bottom Sheet)
+
+1. /login — brand block top, 4-digit badge field, 4-cell PIN pad, red SIGN IN CTA. Any 4+4 digits succeeds → cookie → /map.
+
+2. /map — full-bleed dark Mapbox map. Top: badge plate left, yellow-bordered SOS top-right. Filter chip rail. Bottom: dark hint card ("LAST INCIDENT · 6 HRS AGO"). Persistent footer: red "+ NEW INCIDENT" + list-icon → /history. Past incidents as red dots w/ halo. No hydrants on this screen.
+
+3. /map/new — Back · "NEW INCIDENT" · "STEP 1/2". Address search w/ yellow border calls /api/geocode (250ms debounce), renders up to 3 result cards. 3-col TYPE grid (STRUCTURE/VEHICLE/BRUSH/MEDICAL/HAZMAT/OTHER) — selected = red fill. ALARM 5-cell row (1-5) — selected = yellow fill. UNIT (editable, default "E-12") + TIME (auto, mono, disabled). Footer red CTA "FIND HYDRANTS →" → POST /api/incidents → push /map/incident/[id].
+
+4. /map/incident/[id] — map centered on incident. Render: red teardrop incident pin with "!", top 3 hydrants (yellow halo on #1), yellow dashed route polyline from #1 to incident, out-of-service hydrants in radius as grey X. Top: pulsing red ACTIVE timer pill + SOS. Bottom sheet w/ drag handle, "NEAREST HYDRANTS · 3 of N", three HydrantCards (#1 with yellow border + warmer bg). Out-of-service get red OUT chip. Footer: red NAVIGATE CTA (maps:?daddr=lat,lng) + list-icon.
+
+5. /history — map (incidents only, no hydrants). Filter pill bar: time (7D/30D/ALL) + type (multi-select; +N chip for overflow). Active = yellow, inactive = smoke. Bottom sheet lists incidents w/ time-ago, address, type+level chips, chevron → /map/incident/[id].
+
+Tablet (@media min-width:900px): split 440px dispatch rail + map. Same components — Tailwind lg: breakpoint, no forked screens.
+
+## Build order
+1. Scaffold + fonts + Tailwind theme. Smoke-test /.
+2. Drop in public/data/hydrants.geojson + lib/hydrants.ts loader.
+3. Prisma init + migrate + seed (6 past incidents).
+4. Mock auth + /login end-to-end.
+5. MapView with dark style + 4 marker types.
+6. /map home with seeded past-incident pins.
+7. /map/new form + /api/geocode proxy.
+8. Nearest-hydrant API + HydrantCard + /map/incident/[id] with route polyline.
+9. /history with filters.
+10. Tablet breakpoint pass.
+
+Commit after each step. Do not introduce a new dependency without asking first.
+
+## Acceptance
+On a fresh clone, `pnpm install && pnpm prisma db push && pnpm prisma db seed && pnpm dev` just works. I can log in with 0418/1234, see 6 seeded past incidents on a dark map, tap + NEW INCIDENT, type "418 Elm", pick the geocoded result, hit FIND HYDRANTS, and within ~1.5s see top 3 hydrants ranked by routed duration with a yellow dashed route from #1 to my incident. Out-of-service hydrants in radius appear as grey X markers and never enter the top-3 list. SOS is reachable from every screen. Resizing to ≥900px wide re-flows /map/incident/[id] to the dispatch-rail layout.
+</script>
+
+<script>
+  document.getElementById('copyBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const md = document.getElementById('md-source').textContent.trim();
+    try {
+      await navigator.clipboard.writeText(md);
+      const old = btn.innerHTML;
+      btn.classList.add('ok');
+      btn.innerHTML = 'COPIED ✓';
+      setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = old; }, 1800);
+    } catch (err) {
+      alert('Copy failed — select the markdown manually from page source.');
+    }
+  });
+</script>
+</body>
+</html>
