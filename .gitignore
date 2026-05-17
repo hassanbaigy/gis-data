@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude-agent-team — personal/local memory
+.claude/agent-memory-local/
+.claude/settings.local.json
