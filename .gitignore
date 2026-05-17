@@ -30,9 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (can opt-in for committing if needed). `.env` is committed
+# because it carries non-secret defaults (DATABASE_URL). Real secrets go
+# in `.env.local`, which stays gitignored.
 .env*
 !.env.example
+!.env
 
 # delivery-workflow state (per-machine, not a deliverable)
 .claude/state/
@@ -44,6 +47,13 @@ yarn-error.log*
 !/tests/screenshots/baseline/
 /tests/playwright-report/
 /test-results/
+
+# Prisma — local SQLite database file is per-machine; the schema and
+# migrations are committed so anyone can recreate it via `prisma migrate dev`.
+/prisma/dev.db
+/prisma/dev.db-journal
+/prisma/*.db
+/prisma/*.db-journal
 
 # vercel
 .vercel
