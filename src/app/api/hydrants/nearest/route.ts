@@ -32,7 +32,33 @@ import { getMatrix, getRoute, MapboxError } from "@/lib/mapbox";
 
 export const dynamic = "force-dynamic";
 
-const MAX_K = 10; // sanity cap; we still only Matrix-rank the top 10
+// TODO(HF-001-merge): gate this route with requireFirefighter() once HF-001
+// (mock auth) merges. Currently any caller can trigger 2 Mapbox API calls.
+
+// MAX_K caps both the caller-requested k AND the haversine prefilter window.
+// If a future story needs k > 10, raise BOTH PREFILTER_SIZE and MAX_K — the
+// algorithm requires the prefilter window be ≥ k.
+const PREFILTER_SIZE = 10;
+const MAX_K = 10;
+
+// Explicit field list returned in API responses. Keeping this narrow
+// prevents future schema additions (e.g. a FK to a `reportedBy` relation)
+// from automatically leaking into public response payloads.
+const HYDRANT_SELECT = {
+  id: true,
+  type: true,
+  category: true,
+  address: true,
+  location: true,
+  street: true,
+  city: true,
+  state: true,
+  zip: true,
+  inService: true,
+  lat: true,
+  lng: true,
+  geocodedAt: true,
+} as const;
 
 type Body = { lat?: unknown; lng?: unknown; k?: unknown };
 
@@ -75,12 +101,15 @@ export async function POST(req: Request) {
 
   // ----------------- load + haversine prefilter ----------------------------
   // Pull only the rows we need. Future story can paginate / spatial-index
-  // if the dataset ever grows past O(thousands).
+  // if the dataset ever grows past O(thousands). Explicit `select` keeps
+  // any future schema fields (relations, sensitive flags) from auto-leaking.
   const inService = await prisma.hydrant.findMany({
     where: { inService: true, lat: { not: null }, lng: { not: null } },
+    select: HYDRANT_SELECT,
   });
   const oos = await prisma.hydrant.findMany({
     where: { inService: false, lat: { not: null }, lng: { not: null } },
+    select: HYDRANT_SELECT,
   });
 
   // Score by haversine; non-null assertion is safe because of the where clause.
@@ -91,7 +120,7 @@ export async function POST(req: Request) {
     }))
     .sort((a, b) => a.distanceM - b.distanceM);
 
-  const top10 = inServiceScored.slice(0, 10);
+  const top10 = inServiceScored.slice(0, PREFILTER_SIZE);
 
   if (top10.length === 0) {
     return NextResponse.json(
@@ -121,13 +150,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // Pair candidates with routed metrics; sort by duration.
+  // Pair candidates with routed metrics; sort by duration. The Matrix
+  // wrapper validates array lengths so distances[i] / durations[i] are
+  // both guaranteed defined here.
   const ranked = top10
     .map((entry, i) => ({
       hydrant: entry.hydrant,
       haversineM: entry.distanceM,
-      distanceM: matrix.distances[i] ?? entry.distanceM,
-      durationS: matrix.durations[i] ?? Number.POSITIVE_INFINITY,
+      distanceM: matrix.distances[i],
+      durationS: matrix.durations[i],
     }))
     .sort((a, b) => a.durationS - b.durationS);
 

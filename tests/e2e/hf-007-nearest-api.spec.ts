@@ -84,9 +84,12 @@ test.describe("HF-007 POST /api/hydrants/nearest", () => {
       expect((oos as Record<string, unknown>).geometry).toBeUndefined();
     }
 
-    // The Mapbox secret token must NEVER appear in the response. Belt and
-    // braces — if anyone ever JSON-stringifies the env, this catches it.
+    // The Mapbox secret token must NEVER appear in the response. We check
+    // both the literal token value from env (catches any echo path) AND
+    // the env-var name (catches any accidental serialisation of process.env).
     const bodyText = JSON.stringify(body);
+    const secretToken = process.env.MAPBOX_SECRET_TOKEN;
+    if (secretToken) expect(bodyText).not.toContain(secretToken);
     expect(bodyText).not.toContain("sk.");
     expect(bodyText).not.toContain("MAPBOX_SECRET_TOKEN");
 
@@ -129,6 +132,14 @@ test.describe("HF-007 POST /api/hydrants/nearest", () => {
 
     // k out of range
     res = await ctx.post(ENDPOINT, { data: { ...GORHAM, k: 0 } });
+    expect(res.status()).toBe(400);
+
+    // k above MAX_K
+    res = await ctx.post(ENDPOINT, { data: { ...GORHAM, k: 11 } });
+    expect(res.status()).toBe(400);
+
+    // k not an integer
+    res = await ctx.post(ENDPOINT, { data: { ...GORHAM, k: 1.5 } });
     expect(res.status()).toBe(400);
 
     await ctx.dispose();

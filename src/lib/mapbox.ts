@@ -18,11 +18,26 @@ const MATRIX_BASE = "https://api.mapbox.com/directions-matrix/v1/mapbox/driving"
 const DIRECTIONS_BASE = "https://api.mapbox.com/directions/v5/mapbox/driving";
 
 function token(): string {
-  const t = process.env.MAPBOX_SECRET_TOKEN ?? process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+  // SECRET token only. Do NOT fall back to NEXT_PUBLIC_MAPBOX_TOKEN — that
+  // token is scoped for client-side map rendering and using it for server
+  // APIs blurs the privilege boundary in production deploys.
+  const t = process.env.MAPBOX_SECRET_TOKEN ?? "";
   if (!t) {
     throw new MapboxError(0, "MAPBOX_SECRET_TOKEN is not set");
   }
   return t;
+}
+
+/**
+ * Defence-in-depth: scrub anything that looks like a Mapbox token from a
+ * string before it lands in an error message or response body. If Mapbox
+ * ever echoes the request URL (which contains `access_token=...`) in a 4xx
+ * error body, this prevents the token from being serialised back to the
+ * caller. The integration spec also asserts the actual token value isn't
+ * in any response — this is the runtime guard.
+ */
+function scrubTokens(s: string): string {
+  return s.replace(/[sp]k\.[A-Za-z0-9._-]+/g, "[REDACTED]");
 }
 
 export class MapboxError extends Error {
@@ -80,7 +95,7 @@ export async function getMatrix(
     }
     throw new MapboxError(
       res.status,
-      `Matrix call failed (${res.status}): ${body.slice(0, 200)}`,
+      `Matrix call failed (${res.status}): ${scrubTokens(body.slice(0, 200))}`,
     );
   }
   const data = (await res.json()) as {
@@ -92,15 +107,27 @@ export async function getMatrix(
   if (data.code !== "Ok" || !data.durations || !data.distances) {
     throw new MapboxError(
       502,
-      `Matrix returned unexpected shape: code=${data.code}, message=${data.message ?? "n/a"}`,
+      `Matrix returned unexpected shape: code=${data.code}, message=${scrubTokens(data.message ?? "n/a")}`,
     );
   }
   // durations[i][j] = source i → destination j. We have 1 source and N
-  // destinations, so we want durations[0] (length N) and distances[0].
-  return {
-    durations: data.durations[0],
-    distances: data.distances[0],
-  };
+  // destinations, so durations[0] / distances[0] is length N each. Validate
+  // the length matches what we asked for so we don't silently substitute
+  // haversine for a missing element downstream.
+  const durations = data.durations[0];
+  const distances = data.distances[0];
+  if (
+    !Array.isArray(durations) ||
+    !Array.isArray(distances) ||
+    durations.length !== destinations.length ||
+    distances.length !== destinations.length
+  ) {
+    throw new MapboxError(
+      502,
+      `Matrix returned mismatched array lengths: expected ${destinations.length}, got durations=${durations?.length} distances=${distances?.length}`,
+    );
+  }
+  return { durations, distances };
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +162,7 @@ export async function getRoute(
     }
     throw new MapboxError(
       res.status,
-      `Directions call failed (${res.status}): ${body.slice(0, 200)}`,
+      `Directions call failed (${res.status}): ${scrubTokens(body.slice(0, 200))}`,
     );
   }
   const data = (await res.json()) as {
@@ -150,7 +177,7 @@ export async function getRoute(
   if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
     throw new MapboxError(
       502,
-      `Directions returned unexpected shape: code=${data.code}, message=${data.message ?? "n/a"}`,
+      `Directions returned unexpected shape: code=${data.code}, message=${scrubTokens(data.message ?? "n/a")}`,
     );
   }
   const top = data.routes[0];
