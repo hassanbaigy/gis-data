@@ -21,10 +21,6 @@ import { MapHome, type IncidentRow } from "./map-home";
 // MUST be dynamic — no caching.
 export const dynamic = "force-dynamic";
 
-// D3 — fallback centre when no incidents in the initial window. Gorham, ME
-// is where every seeded incident sits, so this is sensible even after the
-// seed grows.
-const GORHAM_FALLBACK: [number, number] = [-70.444, 43.679]; // [lng, lat]
 const INITIAL_SINCE_DAYS = 7;
 
 export default async function MapHomePage() {
@@ -62,23 +58,14 @@ export default async function MapHomePage() {
     createdAt: r.createdAt.toISOString(),
   }));
 
-  // Initial map centre: average of fetched incident coords; fallback per D3.
-  const initialCenter: [number, number] =
-    initialIncidents.length === 0
-      ? GORHAM_FALLBACK
-      : [
-          initialIncidents.reduce((s, i) => s + i.lng, 0) /
-            initialIncidents.length,
-          initialIncidents.reduce((s, i) => s + i.lat, 0) /
-            initialIncidents.length,
-        ];
-
+  // Initial map centre is derived client-side from `initialIncidents` (the
+  // memoised `center` in MapHome handles the empty-list fallback to
+  // GORHAM_FALLBACK per D3). No need to compute or pass it separately.
   return (
     <MapHome
       badge={firefighter.badge}
       unitId={firefighter.unitId}
       initialIncidents={initialIncidents}
-      initialCenter={initialCenter}
     />
   );
 }

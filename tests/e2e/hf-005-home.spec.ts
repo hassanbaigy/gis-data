@@ -274,12 +274,29 @@ test.describe("HF-005 /map home screen", () => {
   test("tapping 7 DAYS chip re-fetches and map state updates", async ({
     page,
   }) => {
+    // Reviewer HIGH-2: the count-only assertion couldn't distinguish a real
+    // re-fetch from a no-op when seed data happened to match. Track API
+    // requests directly so the test fails if the chip tap did NOT trigger
+    // a refetch (which would have indicated the stale-data BLOCKER-1 bug
+    // reappeared).
+    const apiCalls: string[] = [];
+    page.on("request", (req) => {
+      const u = new URL(req.url());
+      if (u.pathname === "/api/incidents" && req.method() === "GET") {
+        apiCalls.push(u.search); // e.g. "?since=all"
+      }
+    });
+
     await page.goto("/map");
 
     const stateEl = page.locator("[data-hf-map-state]");
     await expect(stateEl).toHaveAttribute("data-status", "ready", {
       timeout: 15_000,
     });
+
+    // Server-rendered initial state uses Prisma directly, not /api/incidents
+    // — so apiCalls should be empty at this point.
+    expect(apiCalls).toHaveLength(0);
 
     // Record marker count before the toggle.
     const beforeRaw = await stateEl.getAttribute("data-marker-count");
@@ -297,6 +314,12 @@ test.describe("HF-005 /map home screen", () => {
     await expect(allChip).toHaveAttribute("aria-pressed", "true", {
       timeout: 5_000,
     });
+
+    // Refetch happened: at least one /api/incidents?since=all request fired
+    // since the chip tap. This is the network-level proof that the toggle
+    // produced a real refresh (catches the BLOCKER-1 stale-data path).
+    await expect.poll(() => apiCalls.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
+    expect(apiCalls.some((s) => s.includes("since=all"))).toBe(true);
 
     // Map re-fetches: wait for "ready" again (may momentarily drop to "loading").
     await expect(stateEl).toHaveAttribute("data-status", "ready", {

@@ -20,7 +20,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MapView, type MapMarker } from "@/components/MapView";
 import { BadgePlate } from "@/components/BadgePlate";
@@ -48,26 +48,23 @@ type Props = {
   badge: string;
   unitId: string;
   initialIncidents: IncidentRow[];
-  initialCenter: [number, number];
 };
 
-export function MapHome({
-  badge,
-  unitId,
-  initialIncidents,
-  initialCenter,
-}: Props) {
+export function MapHome({ badge, unitId, initialIncidents }: Props) {
   const [since, setSince] = useState<SinceFilter>("7d");
   const [unitActive, setUnitActive] = useState(true);
   const [incidents, setIncidents] = useState<IncidentRow[]>(initialIncidents);
 
-  // Re-fetch on filter change. Initial render uses the server's data so we
-  // skip the round-trip for the default `since=7d` + UNIT-active state.
-  const isInitialState = since === "7d" && unitActive;
+  // First-mount ref: skip the initial fetch (server data is fresh and already
+  // in state). Every subsequent filter change triggers a real fetch. Reviewer
+  // BLOCKER-1: the previous `isInitialState` short-circuit overwrote live
+  // fetched data with the SSR snapshot when filters round-tripped back to
+  // defaults (UNIT off → on). A useRef guard eliminates that path entirely.
+  const isFirstMount = useRef(true);
+
   useEffect(() => {
-    if (isInitialState) {
-      // Filters match server defaults — keep initialIncidents.
-      setIncidents(initialIncidents);
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
       return;
     }
     let cancelled = false;
@@ -76,24 +73,42 @@ export function MapHome({
     if (unitActive) params.set("unitId", unitId);
 
     fetch(`/api/incidents?${params.toString()}`, { credentials: "same-origin" })
-      .then((r) => r.json())
+      .then((r) => {
+        // Reviewer HIGH-1: explicitly check r.ok so non-2xx responses (401
+        // mid-session, 400 on a bad filter value) raise instead of silently
+        // clearing the map. Caught by the catch block below.
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        return r.json();
+      })
       .then((body: { incidents?: IncidentRow[] }) => {
         if (cancelled) return;
         setIncidents(body.incidents ?? []);
       })
-      .catch(() => {
-        // Surface in console; keep showing the previous state. The
-        // afterEach console-error guard in the spec is scoped, so a real
-        // network blip won't be silenced.
-        console.error("[hf-005] failed to refetch /api/incidents");
+      .catch((err) => {
+        // Surface in console; keep showing the previous state so the user
+        // doesn't see an empty map flash. The afterEach console-error guard
+        // in the spec only filters the known /history 404, so a real failure
+        // here will still flag in CI.
+        console.error(
+          "[hf-005] failed to refetch /api/incidents:",
+          err instanceof Error ? err.message : "unknown",
+        );
       });
 
     return () => {
       cancelled = true;
     };
-  }, [since, unitActive, unitId, initialIncidents, isInitialState]);
+    // initialIncidents intentionally NOT in deps — captured once at mount.
+    // initialCenter likewise — only used pre-mount via the `incidents`
+    // initialState.
+  }, [since, unitActive, unitId]);
 
   // Map centre tracks filtered incidents; falls back to Gorham on empty (D3).
+  // With the first-mount fetch skipped, `incidents` on first render equals
+  // `initialIncidents` so `center` here computes the same value as the
+  // server's `initialCenter` — no `effectiveCenter` branch needed.
   const center: [number, number] = useMemo(() => {
     if (incidents.length === 0) return GORHAM_FALLBACK;
     const lngSum = incidents.reduce((s, i) => s + i.lng, 0);
@@ -112,8 +127,14 @@ export function MapHome({
     [incidents],
   );
 
-  // Initial centre prop for the first paint — after that, `center` drives.
-  const effectiveCenter = isInitialState ? initialCenter : center;
+  // Reviewer BLOCKER-2: hydrant count is derived from chosenHydrantId presence
+  // across the visible incident list (per STORY.md AC line "N hydrants derived
+  // from chosenHydrantId presence"). Passed into HintCard so the chip
+  // reflects the actual data — not a hardcoded "3".
+  const hydrantCount = useMemo(
+    () => incidents.filter((i) => i.chosenHydrantId !== null).length,
+    [incidents],
+  );
 
   return (
     <main className="flex h-screen flex-col bg-black text-paper">
@@ -124,7 +145,7 @@ export function MapHome({
         className="relative flex-1"
         style={{ minHeight: 0 }}
       >
-        <MapView center={effectiveCenter} zoom={ZOOM} markers={markers} />
+        <MapView center={center} zoom={ZOOM} markers={markers} />
 
         {/* Top bar — 16px safe inset, both sides. `pointer-events-none` on
             the absolute wrapper so taps fall through to the map; children
@@ -155,7 +176,10 @@ export function MapHome({
         {/* Hint card — anchored above the footer. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-4">
           <div className="pointer-events-auto">
-            <HintCard incident={incidents[0] ?? null} />
+            <HintCard
+              incident={incidents[0] ?? null}
+              hydrantCount={hydrantCount}
+            />
           </div>
         </div>
       </div>

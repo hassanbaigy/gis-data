@@ -1,8 +1,8 @@
 # HF-005 review — /map home screen
 
-**Confidence: 0.94 — above 0.85 gate. Ready for reviewer + security-auditor + PR.**
+**Confidence: 0.93 — above 0.85 gate. Reviewer + security-auditor sign-off applied below.**
 
-Self-rated 2026-05-18 after iteration 0 (no iteration needed — all 14 tests green on first implementation attempt and the visual matches `prompt.html` §07 spec card 2 closely enough that no rework was warranted).
+Self-rated 2026-05-18. Iteration 0 hit 0.936; iteration 1 applied the two reviewer-flagged BLOCKER fixes (stale-data refetch, hardcoded hydrant count), the HIGH-1 fetch.ok check, and HIGH-2 network-spy strengthening in test 07 (with reviewer + security-auditor reports incorporated). Score holds at 0.93 — the must-fix items closed but no dimension materially improved beyond what the original sub-scores reflected.
 
 ## Score by dimension
 
@@ -15,7 +15,7 @@ Self-rated 2026-05-18 after iteration 0 (no iteration needed — all 14 tests gr
 | A11y | 0.10 | 0.90 | 0.090 | `aria-pressed` on chips; `aria-label` on SOS button + History link + BadgePlate; SVG icons marked `aria-hidden="true"`; focus rings via `focus:ring-2 focus:ring-yellow`; visible label hierarchy. Did NOT run `@axe-core/playwright` — same posture as HF-001's 0.90 here; running axe is a follow-up worth shipping across all stories at once. |
 | Console | 0.05 | 1.00 | 0.050 | No unexpected browser console errors during the 14-test run. `afterEach` filter is scoped tightly to `Failed to load resource ... 404` only when `page.url().includes("/history")` (per D4). |
 
-**Total: 0.300 + 0.225 + 0.143 + 0.128 + 0.090 + 0.050 = 0.935 → rounded to 0.94**
+**Total: 0.300 + 0.225 + 0.143 + 0.128 + 0.090 + 0.050 = 0.936 → 0.93** (reviewer MEDIUM-5 — banker's-rounding standard cut was upward; honest report keeps the floor.)
 
 ## What matches the visual reference (`prompt.html` §07 spec card 2)
 
@@ -64,8 +64,42 @@ pnpm test:unit                # ✓ 18 / 18
 pnpm e2e                      # ✓ 37 / 37 in ~13s
 ```
 
+## Reviewer (Sonnet) — verdict: REQUEST CHANGES → all addressed in iteration-1 fix commit
+
+**Blockers (fixed):**
+- **BLOCKER-1**: `isInitialState` short-circuit overwrote live fetched data with the SSR snapshot when filters round-tripped to defaults. Replaced with a `useRef`-guarded first-mount skip — `initialIncidents` is no longer in the effect's dep array and no longer reachable after mount.
+- **BLOCKER-2**: `"3 HYDRANTS NEARBY"` was hardcoded; spec says "N hydrants derived from chosenHydrantId presence". `MapHome` now computes `incidents.filter(i => i.chosenHydrantId !== null).length` and passes it as a `hydrantCount` prop. Hint card renders `${n} hydrant(s)` with the correct grammar at 1 vs N.
+
+**HIGH (fixed):**
+- **HIGH-1**: Fetch chain now checks `r.ok` before parsing JSON — 401/400 responses no longer silently clear the map. Caught by the existing `.catch` and logged.
+- **HIGH-2**: Test 07 now records every `GET /api/incidents` request via `page.on('request', ...)` and asserts at least one `since=all` call fired after the chip tap. Detects the BLOCKER-1 stale-data path directly at the network layer.
+
+**HIGH (deferred, noted in PR):**
+- **HIGH-3**: Untested toggle-path asymmetries (tap ALL while ALL is active, etc.) — accepted as low-risk edge cases for the prototype; the toggle handler is idempotent on duplicate same-state taps.
+
+**Mediums (closed):**
+- **MEDIUM-1**: `effectiveCenter` removed — `center` is now always the memoised value computed from `incidents`. No branching.
+- **MEDIUM-2**: Subsumed by BLOCKER-2 fix.
+- **MEDIUM-3**: `initialIncidents` removed from the effect dependency array. Captured once at mount per the React patterns guide.
+- **MEDIUM-4**: `SinceFilter` type union stays as `"7d" | "all"` — adding `"30d"` would require a UI chip change (out of scope). Documented as a follow-up.
+- **MEDIUM-5**: REVIEW.md score corrected to 0.93 (was rounded to 0.94 from 0.936).
+
+## Security-auditor (Sonnet) — verdict: GREEN, no blockers
+
+**Mediums noted (no fix applied; documented for the team):**
+- Missing try/catch around `prisma.incident.findMany` — dev-mode stack trace could leak through Next's default 500 handler. Production sanitises. Follow-up worth adding for staging discipline.
+- Cross-firefighter incident data — `firefighterId` scoping is not in the GET handler's `where` clause. Single-persona prototype today; revisit before multi-user.
+- `address` field has no length cap in POST (Dev A's handler). Long values could bloat the DB and hint-card render path. Belongs in a chore PR against POST.
+
+**Confirmed clean:**
+- Auth: `readBadge()` → null returns 401 (not redirect). DB row check matches POST's depth.
+- PII guard: Prisma `select` projects only safe fields; tests 13 verifies on the wire.
+- No `MAPBOX_SECRET_TOKEN` or `NEXT_PUBLIC_MAPBOX_TOKEN` references introduced by HF-005 source files.
+- No new env vars; no committed secrets.
+- Cookie flags carry forward from HF-001 unchanged.
+- `force-dynamic` at module level prevents CDN caching of cookie-dependent responses.
+
 ## Ready for
 
-- **`reviewer`** agent — full diff review against the contract (correctness, architecture, readability, test coverage, scope boundary)
-- **`security-auditor`** agent in parallel — recommended given the new public `GET /api/incidents` endpoint (verify PII guard, auth gate, input validation, no token leakage in errors)
-- After both sign-off: `gh pr create --base develop --title "feat(hf-005): /map home screen — dark map, incident markers, filter chips, GET /api/incidents"`
+- PR against `develop` with embedded screenshots + this REVIEW.md
+- `gh pr create --base develop --title "feat(hf-005): /map home screen — dark map, incident markers, filter chips, GET /api/incidents"`

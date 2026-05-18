@@ -3,10 +3,17 @@
  * most-recent incident at a glance. No glass blur (per spec card 2 —
  * "glassless dark"). Display-only.
  *
- * The "N hydrants" chip is intentionally static at "3 hydrants nearby" —
- * `/api/hydrants/nearest` always returns top-3 by design, so this is
- * honest to the algorithm's contract even though we don't recompute here.
- * HF-008 will surface per-incident hydrant detail on the results screen.
+ * The hydrant count chip is derived from `chosenHydrantId` presence across
+ * the visible incident list (per STORY.md AC: "N hydrants derived from
+ * chosenHydrantId presence"). Computed in `MapHome` and passed in — keeps
+ * this component a pure render of two facts: the most-recent incident's
+ * address + time, and the count of incidents in view that had a hydrant
+ * assigned.
+ *
+ * Reviewer BLOCKER-2 (pre-merge): the previous version rendered a
+ * hardcoded "3 hydrants nearby" regardless of data. That was a factual
+ * lie when fewer (or more) incidents had chosen hydrants. Fixed by
+ * passing `hydrantCount` from the parent.
  */
 
 type IncidentLike = {
@@ -17,9 +24,11 @@ type IncidentLike = {
 
 type Props = {
   incident: IncidentLike | null;
+  /** Count of incidents in the currently-visible list whose `chosenHydrantId` is non-null. */
+  hydrantCount: number;
 };
 
-export function HintCard({ incident }: Props) {
+export function HintCard({ incident, hydrantCount }: Props) {
   if (!incident) {
     return (
       <div className="rounded-md bg-black/80 p-4">
@@ -35,6 +44,8 @@ export function HintCard({ incident }: Props) {
 
   const hoursAgo = hoursSince(incident.createdAt);
   const hoursLabel = hoursAgo === 1 ? "1 HR AGO" : `${hoursAgo} HRS AGO`;
+  const hydrantLabel =
+    hydrantCount === 1 ? "1 hydrant" : `${hydrantCount} hydrants`;
 
   return (
     <div className="rounded-md bg-black/80 p-4">
@@ -45,7 +56,7 @@ export function HintCard({ incident }: Props) {
         {incident.address}
       </p>
       <p className="mt-2 inline-block bg-paper/10 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-paper/70">
-        3 hydrants nearby
+        {hydrantLabel}
       </p>
     </div>
   );
