@@ -32,6 +32,7 @@ import {
   type SinceFilter as _SinceFilter,
 } from "@/components/TimeFilterChips";
 import { TypeFilterChips } from "@/components/TypeFilterChips";
+import { IncidentRow as IncidentRowUI } from "@/components/IncidentRow";
 
 // D5 — fallback when the filtered result is empty. Gorham, ME centroid
 // (lng-first per MapView's `center` prop convention). Same constant
@@ -173,17 +174,31 @@ export function HistoryView({ initialIncidents }: Props) {
           />
         </div>
 
-        {/* Step D replaces this placeholder with IncidentRow components.
-            For Step B verification, this just confirms the data is
-            reachable + the layout is structurally sound. */}
+        {/* Scrollable incident list. Each row is an IncidentRow `<Link>`
+            that navigates to /map/incident/[id]. Empty state shows a
+            terse mono message. */}
         <div
           className="flex-1 overflow-y-auto"
           aria-label="Incident list"
         >
-          <p className="px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-paper/40">
-            {filteredIncidents.length} incident
-            {filteredIncidents.length === 1 ? "" : "s"} — rows coming in step D
-          </p>
+          {filteredIncidents.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper/40">
+                No incidents match the current filters
+              </p>
+            </div>
+          ) : (
+            filteredIncidents.map((incident) => (
+              <IncidentRowUI
+                key={incident.id}
+                id={incident.id}
+                createdAt={incident.createdAt}
+                address={incident.address}
+                type={incident.type}
+                alarmLevel={incident.alarmLevel}
+              />
+            ))
+          )}
         </div>
       </section>
     </main>
