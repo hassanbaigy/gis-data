@@ -1,241 +1,241 @@
-# HF-008 — Polish /map/incident/[id] results screen
+# HF-009 — /history page
 
 ## Story
 
-As a firefighter who just submitted an incident, I want to see the three nearest hydrants ranked by driving time with a drawn route to #1, so that I can dispatch a hose line in seconds.
+As a firefighter or officer reviewing past calls, I want a filterable list of past incidents with the map view, so that I can re-open any incident's hydrant set.
 
 ## Acceptance criteria
 
-- `/map/incident/[id]` is gated by `requireBadge()`. 404 if the id doesn't exist.
-- On mount, the page calls the existing incident's stored `hydrants` payload (set at create time by HF-006). Map centres on the incident location.
-- Renders on the map: 1 incident pin (red teardrop with `!`), top-3 hydrants (yellow halo + yellow fill on #1, blue with yellow ring on #2 and #3), the yellow dashed route polyline from #1 to the incident (base layer 10px @ 35% opacity, dashed top 5px solid yellow), all `flaggedOos` hydrants as grey X markers.
-- Top bar: pulsing red `ACTIVE · MM:SS` pill (timer counts up from `incident.createdAt`), SOS button top-right.
-- Bottom sheet with drag handle. Header: `"NEAREST HYDRANTS · 3 of N"` where N is total hydrants the API considered. Three `HydrantCard`s rendered:
-  - Big rank digit (1, 2, 3) in display
-  - Hydrant id in mono
-  - Address
-  - Distance in display
-  - ETA in yellow mono
-  - #1 has 1.5px yellow border and a warmer background
-  - Any card whose hydrant is flagged OOS shows a red `OUT` chip (defensive — by API contract OOS never enter the top-3, but the chip logic must exist for the `flaggedOos` list)
-- Footer: red `NAVIGATE` CTA — opens `maps:?daddr=<lat>,<lng>` for the #1 hydrant — plus a list-icon button on the right that opens a modal showing the full hydrant list including OOS entries.
-- Playwright spec drives the full flow: starts from `/map/new`, submits an incident, lands on this page, asserts the route polyline is present, the three cards render in order, the timer is counting, and the NAVIGATE link points to `maps:?daddr=...` with the #1 hydrant's coordinates.
-- Confidence rubric pays special attention to **Visual** (this is the marquee screen) — side-by-side against `index.html` Screen 4.
+- `/history` is gated by `requireFirefighter()`.
+- Top half: `MapView` centred on the average incident lat/lng, with incidents only (no hydrants).
+- Filter pill bar above the list: time (7D / 30D / ALL) — single-select, default 7D; type (STRUCTURE / VEHICLE / BRUSH / MEDICAL / HAZMAT / OTHER) — multi-select, with a `+N` chip when more than 3 are selected. Active = yellow, inactive = smoke.
+- Toggling filters re-queries `GET /api/incidents?since=…&type=…` and re-renders both the map and the list.
+- Bottom list: each row shows time-ago label (mono, e.g. `"6 HRS AGO"`), address (display), type + alarm-level chips, chevron right.
+- Tapping a row navigates to `/map/incident/[id]` and re-opens that incident's stored hydrant payload.
+- Playwright spec: lands on `/history`, sees 6 rows, applies `STRUCTURE` filter, asserts the row count drops appropriately, taps a row, asserts navigation to that incident's page.
 
 ## Out of scope
 
-- In-app navigation (we hand off to the OS maps app).
-- Editing or deleting the incident from this screen.
+- Editing or deleting incidents.
+- Exporting / CSV.
 - Tablet layout (HF-010).
-- `/history` page (HF-009).
-- Expanded hydrant modal interior detail beyond a simple list view. The modal opens and shows the full hydrant list (top-3 + OOS rows: mono id + address + distance + ETA). No filters, no sort controls.
-- Touch-drag-to-collapse on the bottom sheet. The drag handle is a visual affordance only in v1; actual drag-to-collapse is deferred to a future story. The sheet is always fully open.
+- Sorting beyond `createdAt DESC`.
+- Per-incident detail beyond list-row fields — full incident detail lives at `/map/incident/[id]`.
+- Refactoring or extending any existing HF-005 / HF-008 component.
+- Back-navigation header — the screen is a standalone route, not a drill-down.
 
 ## Visual reference
 
-- `index.html` Screen 4 — marquee results screen
-- `prompt.html` §07 spec card 4 (RESULTS · ROUTE at `/map/incident/[id]`)
+- `index.html` Screen 5 (canonical layout mock)
+- `prompt.html` §07 spec card 5 — "HISTORY" at `/history`
 
 ### Key spec details
 
-**Map:** Centred on incident. Renders: incident pin (red teardrop, "!" glyph), top-3 hydrants (yellow halo on #1), route polyline from #1 to incident — base layer 10px @ 35% opacity, dashed top 5px solid yellow. OOS hydrants in radius rendered with grey X marker.
+| Element | Spec |
+|---|---|
+| Layout | Map (incidents only) upper half + filter pill bar + scrollable incident list lower half |
+| Map | Centred on average incident lat/lng. `incident` markers only. No hydrant/chosen/oos. |
+| Filter pill bar | Time rail (7D/30D/ALL) — single-select, default 7D, yellow active / smoke inactive. Type rail (6 categories) — multi-select; `+N` indicator when > 3 selected. |
+| List rows | Mono time-ago + display address + type chip + alarm chip + chevron-right |
+| Row tap | `router.push("/map/incident/[id]")` |
+| Unauthenticated | Redirect to `/login` |
 
-**Top bar:** Red pulsing `ACTIVE · MM:SS` pill (timer counts up from `incident.createdAt`). SOS top-right.
-
-**Bottom sheet:** Drag handle at the top. Header: `"NEAREST HYDRANTS · 3 of N"`. Three `HydrantCard`s. Card #1 has 1.5px yellow border + warmer bg. OOS cards: red `OUT` chip.
-
-**Actions:** Red `NAVIGATE` CTA (`maps:?daddr=lat,lng` for #1). Secondary list-icon button opens modal.
-
-**Marker conventions (spec card 3):**
-- Incident: red teardrop with `!` glyph
-- Chosen (#1): yellow halo + yellow fill
-- Hydrants (#2, #3): blue dot with yellow ring
-- OOS: grey X
+Time-ago: `N HRS AGO` for < 48h (`1 HR AGO` singular), `N DAYS AGO` for ≥ 48h.
 
 ## Files in scope
 
-| File | Action | Notes |
+| Path | Status | Notes |
 |---|---|---|
-| `src/app/map/incident/[id]/incident-view.tsx` | REPLACE | Placeholder side-panel → polished bottom-sheet results screen. Reuse existing `ApiResponse` type and marker-building logic. |
-| `src/app/map/incident/[id]/page.tsx` | NO CHANGE expected | Bare pass-through; `IncidentView` loads its own data client-side. Verify on read — no edits planned. |
-| `src/components/HydrantCard.tsx` | NEW | Rank digit (display), id (mono), address, distance (display), ETA (yellow mono). `data-rank` attribute for Playwright targeting. #1 variant: yellow border + warmer bg. OOS variant: red `OUT` chip. |
-| `src/components/BottomSheet.tsx` | NEW | Drag handle (visual only). Fixed bottom, z-10 over map. HF-009 may reuse. |
-| `src/components/ActiveTimerPill.tsx` | NEW | Pulsing red pill. `setInterval(1000)` computing `Date.now() - new Date(createdAt).getTime()`. Cleanup on unmount. |
-| `src/components/HydrantsModal.tsx` | NEW | `role="dialog"` + `aria-modal="true"`. Full hydrant list rows (top-3 + flagged OOS): mono id + address + distance + ETA. Close button. |
-| `src/components/MapView.tsx` | MODIFY | **Intentional shared-file edit — see § Marker polish.** Authorised by handoff brief L276. |
-| `tests/e2e/hf-008-results.spec.ts` | NEW | Failing-first spec. |
+| `src/app/history/layout.tsx` | NEW | Auth gate — mirrors `src/app/map/layout.tsx` exactly |
+| `src/app/history/page.tsx` | NEW | Server component. `force-dynamic`. Calls `requireFirefighter()` + Prisma query, serialises, passes to `HistoryView`. |
+| `src/app/history/history-view.tsx` | NEW | `"use client"`. Filter state (`since` + `selectedTypes`). Re-fetches on `since` change (first-mount ref pattern). Type filter via `useMemo` (Path B). |
+| `src/components/IncidentRow.tsx` | NEW | Pure display. Renders time-ago + address + type chip + alarm chip + chevron. `data-incident-row` and `data-incident-id` on root. |
+| `src/components/TimeFilterChips.tsx` | NEW | Single-select rail (7D/30D/ALL) with `aria-pressed`. |
+| `src/components/TypeFilterChips.tsx` | NEW | Multi-select for 6 categories, 2×3 grid, supplementary `+N` count when > 3 selected. |
+| `tests/e2e/hf-009-history.spec.ts` | NEW | Failing-first spec, 9 tests. |
 | `STORY.md` | NEW | This file. |
-| `.claude-resume.md` | NEW | Session resume — gitignored. |
+| `.claude-resume.md` | NEW | Live session state (gitignored). |
+
+**Future-chore opportunity (DO NOT act on in HF-009):** unify `HintCard`'s `hoursSince()` helper with `IncidentRow`'s into a shared `src/lib/time.ts` utility. Leave HintCard alone for now.
 
 ## Files NOT in scope (DO NOT TOUCH)
 
 - `prisma/**`
 - `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/geo.ts`, `src/lib/hydrants.ts`, `src/lib/mapbox.ts`
 - `src/app/api/auth/**`, `src/app/api/health/**`, `src/app/api/geocode/**`, `src/app/api/hydrants/**`
-- `src/app/api/incidents/route.ts` (POST + GET handlers)
-- `src/app/api/incidents/[id]/route.ts` (read-only — the GET endpoint this page consumes)
-- `src/app/login/**`, `src/app/page.tsx`
-- `src/app/dev/**`
-- `src/app/map/layout.tsx` (auth gate)
-- `src/app/map/page.tsx` + `src/app/map/map-home.tsx` (HF-005)
-- `src/app/map/new/**`
-- Existing HF-005 components: `BadgePlate`, `SosButton`, `FilterChips`, `HintCard` — do not refactor
+- `src/app/api/incidents/route.ts` (Path B — no API changes)
+- `src/app/api/incidents/[id]/**`
+- `src/app/login/**`, `src/app/page.tsx`, `src/app/dev/**`
+- `src/app/map/**` (HF-005/006/008 territory)
+- `src/components/MapView.tsx` — consume only
+- Existing components (`BadgePlate`, `SosButton`, `FilterChips`, `HintCard`, `BottomSheet`, `ActiveTimerPill`, `HydrantCard`, `HydrantsModal`, `_hydrant-format.ts`) — consume only, DO NOT refactor
 
-## Marker polish — MapView.tsx changes
+## Decisions (signed off by user 2026-05-18)
 
-**One shared file** Dev B is explicitly authorised to edit for HF-008 (handoff prompt L276). The change is isolated to paint properties + one new layer. `MapViewProps`, `data-hf-map-state` test seam, and layer IDs are unchanged.
+**D1 — Path B: client-side type filter** (Q1=B)
+`src/app/api/incidents/route.ts` GET handler stays unchanged. `history-view.tsx` fetches with `since` only and applies a `useMemo` type filter on the client. Acceptable for ≤ 50 rows. No API surface change → `security-auditor` SKIPPED for this story. If the dataset grows beyond ~1000 rows in the future, revisit and switch to Path A (extend GET with `searchParams.getAll("type")` + Prisma `{ type: { in: typeList } }`).
 
-### What changes
+**D2 — Always show all 6 type chips in 2×3 grid + supplementary `+N`** (Q2=B)
+`TypeFilterChips` renders all 6 categories in a 2-row × 3-col grid on phone, regardless of selection count. When > 3 are selected, a non-interactive `+N` summary chip appears next to the group as an informational count (e.g. "+2 more"). The individual chips never hide; they remain tap-targets in their fixed positions. This keeps muscle memory predictable for repeat use.
 
-**Route polyline — second base layer added:**
-- `LAYER_ROUTE_BASE` (new): `line`, `line-width: 10`, `line-color: "#FCD34D"`, `line-opacity: 0.35`
-- `LAYER_ROUTE` (existing): `line`, `line-width: 5`, `line-color: "#FCD34D"`, `line-dasharray: [2, 2]`, `line-opacity: 0.9`
-- Both consume `ROUTE_SOURCE`. Both hidden together via `setLayoutProperty` when `routeGeometry` absent.
+**D3 — `ALL` time filter means no date cutoff** (Q3=confirm)
+Tapping `ALL` sends `since=all` to the GET handler — the existing handler interprets this as "no `createdAt` filter" and returns every historical row. Default state on first load is `7D` active (matches the AC default).
 
-**Incident marker — red teardrop + `!` glyph:**
-Prefer: symbol layer with in-memory canvas-drawn icon (no fetch/CORS). Fallback: keep circle + sibling symbol layer with `text-field: "!"`. Pick fallback if image registration proves fragile in Mapbox GL v3 / Next 16.
+**D4 — Time-ago format mirrors HintCard** (Q4=confirm)
+`hoursSince()` helper local to `IncidentRow` (do NOT extract from HintCard; future-chore opportunity to unify). Output:
+- `1 HR AGO` for exactly 1 hour
+- `N HRS AGO` for < 48 hours (N is the floor of elapsed hours)
+- `N DAYS AGO` for ≥ 48 hours (N is the floor of elapsed days)
+Always uppercase, mono font.
 
-Circle paint: `circle-radius: 12`, `circle-color: "#E11D29"`, `circle-stroke-width: 2`, `circle-stroke-color: "#ffffff"`.
+**D5 — Empty-filter map centre fallback** (Q5=confirm)
+When the type-filter result is empty (no incidents visible on the map), MapView is centred on the Gorham centroid `[-70.444, 43.679]` (lng-first per MapView's `center` prop convention). Same fallback HF-005 uses (D3 there). Implemented as a `const GORHAM_FALLBACK` in `history-view.tsx`.
 
-**Chosen (#1) — yellow halo + yellow fill:**
-`LAYER_CHOSEN`: `circle-radius: 10`, `circle-color: "#FCD34D"`, `circle-stroke-width: 5`, `circle-stroke-color: "#FCD34D"`, `circle-stroke-opacity: 0.35`.
+## Layout note — `BottomSheet` is NOT used here
 
-**Hydrant ring (#2, #3) — blue dot + yellow ring:**
-`LAYER_HYDRANT_RING`: `circle-radius: 11`, `circle-color: "transparent"`, `circle-stroke-width: 2`, `circle-stroke-color: "#FCD34D"`. (`ringHydrants` toggle logic unchanged.)
-`LAYER_HYDRANT`: `circle-radius: 6`, `circle-color: "#3b82f6"`, `circle-stroke-width: 1`, `circle-stroke-color: "#0a0a0a"`.
+HF-008's `BottomSheet` is positioned `absolute inset-x-0 bottom-0` — designed to overlay a full-bleed map. The history screen has a SPLIT layout (map top, list bottom). `history-view.tsx` uses a flex column instead:
 
-**OOS — grey X:**
-Replace circle with symbol layer: `text-field: "✕"`, `text-color: "#6b7280"`, `text-size: 14`, filter `type === "oos"`. Default glyph set — no `addImage` needed.
+```
+<main className="flex h-screen flex-col bg-black text-paper">
+  <section className="relative flex-1" style={{ minHeight: 0 }}>
+    <MapView ... />
+  </section>
+  <section className="flex flex-col border-t border-paper/10">
+    <TimeFilterChips ... />
+    <TypeFilterChips ... />
+    <div className="flex-1 overflow-y-auto">
+      {incidents.map(...)}  {/* IncidentRow stack */}
+    </div>
+  </section>
+</main>
+```
 
-### What does NOT change
-
-- `MARKER_SOURCE`, `ROUTE_SOURCE` IDs
-- All 5 layer ID constants (`LAYER_INCIDENT`, `LAYER_HYDRANT`, `LAYER_HYDRANT_RING`, `LAYER_CHOSEN`, `LAYER_OOS`)
-- `MapViewProps` interface
-- `data-hf-map-state` div + its 4 attributes
-- `ringHydrants` logic
-- `markersToFeatureCollection`
-- `mapboxgl.accessToken` assignment
-
-### PR body note (required)
-
-> **Note for reviewers:** `src/components/MapView.tsx` is shared with HF-005's `/map` home. Edits here are limited to paint property values and one new route underlay layer. `MapViewProps`, the `data-hf-map-state` test seam, and all layer IDs are unchanged. HF-005's `/map` only passes `type: "incident"` markers, so the chosen/hydrant/oos paint changes have no effect on the home screen. Shared-file edit explicitly authorised in handoff brief L276.
+Roughly 50/50 split. Implementer may tune the proportions during click-through.
 
 ## AC → Playwright test map
 
-Tests in `tests/e2e/hf-008-results.spec.ts`. Screenshots → `tests/screenshots/hf-008-results/`.
+All tests in `tests/e2e/hf-009-history.spec.ts`. Screenshots → `tests/screenshots/hf-009-history/`.
 
-### Test data strategy (Option A — recommended)
+### Setup pattern (mirrors `hf-008-results.spec.ts`)
 
-In `test.beforeAll`, call `POST /api/incidents` via `authedRequestContext` with a deterministic Gorham coordinate (`lat: 43.6791, lng: -70.4444`) to create a fresh incident, capture `body.id` + chosen hydrant `lat`/`lng`. Real Mapbox calls happen with Lead's tokens. Mirrors HF-006 spec pattern. Option B (picking a seeded incident with `chosenHydrantId`) skipped — non-deterministic.
+- `test.beforeAll({ playwright })`: POST `/api/incidents` via `authedRequestContext` to create a known incident → capture `incidentId` and the row's `type` for navigation/filter assertions.
+- `test.beforeEach({ context })`: `loginInContext(context)` + console-error collector.
+- `test.afterEach`: assert `consoleErrors` is empty.
 
-### Browser tests — `describe("HF-008 /map/incident/[id]")`
-
-`beforeEach`: `await loginInContext(context)` (except test 13 which uses fresh context).
+### Test list
 
 | # | Test name | AC covered | Screenshot |
 |---|---|---|---|
-| 01 | `renders incident page with map active timer bottom sheet and footer` | Full layout | `01-full-layout.png` |
-| 02 | `map reaches ready state with correct marker count` | Map markers | `02-map-ready.png` |
-| 03 | `data-hf-map-state reports has-route true` | Route polyline | `03-route.png` |
-| 04 | `active timer pill matches ACTIVE · MM:SS format` | Pill format | `04-active-pill.png` |
-| 05 | `active timer pill text changes after 1 second` | Pill ticking | `05-timer-ticking.png` |
-| 06 | `bottom sheet header reads NEAREST HYDRANTS · 3 of N` | Sheet header | `06-sheet-header.png` |
-| 07 | `three hydrant cards render in rank order with id address distance ETA` | Three cards | `07-hydrant-cards.png` |
-| 08 | `card with data-rank 1 has visible yellow border` | #1 styling | `08-rank1-card.png` |
-| 09 | `flagged OOS card shows red OUT chip` | OOS chip | `09-oos-chip.png` |
-| 10 | `NAVIGATE link href starts with maps: and contains chosen hydrant coordinates` | Navigate CTA | `10-navigate-cta.png` |
-| 11 | `tapping list icon opens dialog with full hydrant list` | Modal open | `11-modal-open.png` |
-| 12 | `modal closes when close button is tapped` | Modal close | `12-modal-closed.png` |
-| 13 | `unauthenticated GET /map/incident/:id redirects to /login` | Auth gate (fresh `browser.newContext()`) | `13-unauthed-redirect.png` |
+| T01 | `unauthenticated GET /history redirects to /login` | Auth gate | `01-unauthed-redirect.png` |
+| T02 | `map reaches ready state with incident markers only` | Map + types | `02-map-ready.png` |
+| T03 | `full layout: header map filter rail and incident list` | Layout | `03-full-layout.png` |
+| T04 | `initial list shows all seeded incidents (>= 6 rows)` | Default filter | `04-list-default.png` |
+| T05 | `tapping 30D chip re-fetches and updates map and list` | Time filter | `05-time-filter.png` |
+| T06 | `tapping STRUCTURE chip filters list rows to STRUCTURE only` | Type filter | `06-type-filter.png` |
+| T07 | `selecting 4 type chips shows +N indicator` | +N overflow | `07-plus-n.png` |
+| T08 | `IncidentRow renders time-ago address type chip alarm chip and chevron` | Row fields | `08-row-content.png` |
+| T09 | `tapping a row navigates to /map/incident/[id]` | Row click | `09-row-tap-nav.png` |
 
 ### Key assertion patterns
 
-- **Pill format (04)**: `expect(text).toMatch(/ACTIVE\s*·\s*\d{2}:\d{2}/)`
-- **Pill ticks (05)**: Capture text at T=0, `waitForTimeout(1100)`, capture at T=1, assert they differ
-- **Sheet header (06)**: `getByText(/NEAREST HYDRANTS\s*·\s*3 of \d+/)`
-- **Cards (07)**: locate by `[data-rank='1']`, `[data-rank='2']`, `[data-rank='3']`; assert each contains a mono id + address + distance + ETA
-- **#1 border (08)**: assert `data-rank="1"` element is visible. Visual confirmation via screenshot/rubric.
-- **OOS chip (09)**: `page.getByText(/OUT/).first()` visible inside `[data-oos='true']`
-- **Navigate href (10)**: `expect(href).toMatch(/^maps:\?daddr=/)`, `expect(href).toContain(String(chosenHydrantLat))`, `expect(href).toContain(String(chosenHydrantLng))`
-- **Modal (11)**: `getByRole('button', { name: /list|hydrants/i }).click()` → `getByRole('dialog')` visible → dialog contains #1 hydrant id
+- **T02 marker types**: `data-marker-types` contains `"incident"` and does NOT contain `"hydrant"`, `"chosen"`, or `"oos"`.
+- **T03 initial state**: `7D` chip has `aria-pressed="true"`; `30D` and `ALL` have `aria-pressed="false"`. All 6 type chips have `aria-pressed="false"`.
+- **T05 re-fetch (network spy)**: mirror `hf-005-home.spec.ts` test 07 — record `page.on("request")` for GET `/api/incidents`, tap `30D`, assert ≥ 1 call fired with `since=30d`.
+- **T06 type filter**: tap STRUCTURE, assert `aria-pressed="true"` on STRUCTURE, count `[data-incident-row]` < original, assert every visible row's type chip text is `STRUCTURE`.
+- **T07 +N**: tap 4 type chips, assert element matching `/\+\d+/` visible inside the type filter region.
+- **T08 fields**: on first `[data-incident-row]`: text matching `/\d+\s*(HR|HRS|DAY|DAYS)\s*AGO/i`, non-empty address, type chip from VALID_TYPES set, alarm chip matching `/(ALARM|LEVEL)\s*\d/i`.
+- **T09 navigation**: locate by `[data-incident-id="${incidentId}"]`, click, `waitForURL(/\/map\/incident\//)`, URL contains `incidentId`.
 
-### Console error guard (HF-005 pattern, no `/history` filter needed here)
-```ts
-test.afterEach(async () => {
-  expect(consoleErrors, `unexpected console errors:\n${consoleErrors.join("\n")}`).toHaveLength(0);
-});
-```
+### Test-seam attributes (implementer MUST expose)
+
+- `data-incident-row` on each `IncidentRow` root element (count assertions).
+- `data-incident-id="<id>"` on each `IncidentRow` root element (targeted click in T09).
 
 ## Task list
 
-### Step A — Failing-first spec (loop step 3)
-- Touches: `tests/e2e/hf-008-results.spec.ts`
-- Agent: test-writer
-- Commit: `test(e2e): failing spec for hf-008 results screen`
-- Verify: all N new tests fail (placeholder UI doesn't match bottom-sheet structure)
+### Step A — Failing-first spec
+- **Agent**: test-writer
+- **Touches**: `tests/e2e/hf-009-history.spec.ts`
+- **Commit**: `test(e2e): add failing spec for hf-009-history`
+- **Verify**: all 9 tests fail (`/history` 404)
 
-### Step B — Four new components (loop step 4, part 1)
-- Touches: `src/components/{BottomSheet,ActiveTimerPill,HydrantCard,HydrantsModal}.tsx`
-- Agent: Lead (frontend)
-- Commit: `feat(hf-008): add BottomSheet ActiveTimerPill HydrantCard HydrantsModal components`
+### Step B — Auth gate + server page + client skeleton
+- **Agent**: Lead
+- **Touches**: `src/app/history/layout.tsx`, `src/app/history/page.tsx`, `src/app/history/history-view.tsx` (skeleton with MapView + unfiltered list stubs)
+- **Commit**: `feat(hf-009): auth gate + server page + history-view skeleton`
+- **Verify**: T01 + T02 pass
 
-### Step C — MapView marker polish (loop step 4, part 2)
-- Touches: `src/components/MapView.tsx`
-- Agent: Lead
-- Commit: `feat(hf-008): polish MapView marker styles and add route double-stack layer`
-- Isolated from Step B so reviewers can inspect the shared-file edit independently
+### Step C — Time + type filter chip components
+- **Agent**: Lead (frontend)
+- **Touches**: `src/components/TimeFilterChips.tsx`, `src/components/TypeFilterChips.tsx`, wire into `history-view.tsx`
+- **Commit**: `feat(hf-009): time and type filter chip components`
+- **Verify**: T03 + T05 + T06 + T07 pass
 
-### Step D — Rewire incident-view.tsx (loop step 4, part 3)
-- Touches: `src/app/map/incident/[id]/incident-view.tsx`
-- Agent: Lead
-- Commit: `feat(hf-008): replace placeholder side-panel with polished bottom-sheet results screen`
-- Verify: HF-006 spec still passes (the word `/incident/i` still appears in visible text — ACTIVE pill, incident type chip, etc.)
+### Step D — IncidentRow + navigation
+- **Agent**: Lead (frontend)
+- **Touches**: `src/components/IncidentRow.tsx`, replace stubs in `history-view.tsx`
+- **Commit**: `feat(hf-009): IncidentRow component + row navigation`
+- **Verify**: T04 + T08 + T09 pass. Full 9/9 green.
 
-### Step E — Click-through + REVIEW.md (loop steps 5-7)
-- Touches: `tests/screenshots/hf-008-results/*.png`, `tests/screenshots/hf-008-results/REVIEW.md`
-- Agent: Lead
-- Commit: `chore(hf-008): click-through screenshots + REVIEW.md (confidence X.XX)`
-- Cap at 5 iterations
+### Step E — Click-through + REVIEW.md
+- **Agent**: Lead
+- **Touches**: `tests/screenshots/hf-009-history/*.png`, `tests/screenshots/hf-009-history/REVIEW.md`
+- **Commit**: `chore(hf-009): click-through screenshots + REVIEW.md (confidence X.XX)`
+- **Cap**: 5 iterations
 
-### Step F — Review + PR (loop steps 8-9)
-- Agent: `reviewer` (mandatory); `security-auditor` SKIPPED (no new API surface, no auth changes)
-- PR: `gh pr create --base develop --title "feat(hf-008): polish /map/incident/[id] results screen"`
-- Body includes story+AC, REVIEW.md rubric, 3-5 embedded screenshots, test plan, reviewer output, MapView shared-file note
+### Step F — Reviewer + PR
+- **Agent**: `reviewer` (mandatory); `security-auditor` SKIPPED (Path B — no API surface change)
+- **PR**: `gh pr create --base develop --title "feat(hf-009): /history filterable incident list"`
 
 ## Confidence rubric
 
 | Dimension | Weight | What 1.0 looks like |
 |---|---|---|
-| **Functional** | 0.30 | All N HF-008 tests pass; existing 37 still green; HF-006 doesn't regress; no `.skip`, no `.only` |
-| **Visual** | 0.25 | **MARQUEE SCREEN — highest-stakes.** Side-by-side vs `index.html` Screen 4: bottom sheet, cards, pill, markers, route polyline |
-| **Interaction** | 0.15 | Tab order, focus rings, NAVIGATE link tappable, modal open/close, timer counts |
-| **Robustness** | 0.15 | Loading state, degraded (no route geometry), 404 for bad id, OOS list empty, edge timer drift |
-| **A11y** | 0.10 | `role="dialog"` + `aria-modal="true"` on modal, close button labelled, SOS labelled, cards have semantic structure |
-| **Console** | 0.05 | Zero browser console errors |
+| Functional | 0.30 | All 9 tests pass; full suite (50 + 9 = 59) green; no skips |
+| Visual | 0.25 | Map + filter rail + list match `index.html` Screen 5; chip colours match |
+| Interaction | 0.15 | Tab order sensible, row tap navigates, `aria-pressed` updates, focus rings visible |
+| Robustness | 0.15 | Empty filter result → graceful empty state; map fallback works; 401 mid-session handled |
+| A11y | 0.10 | All chips + rows have accessible names; chevron `aria-hidden` |
+| Console | 0.05 | Zero errors during spec run |
 
-**Gate: 0.85. Max 5 iterations.** Visual dimension carries extra moral weight — this is the marquee polish pass. If Visual < 0.7, fix it before considering any other dimension.
+**Gate: 0.85. Max 5 iterations.** This screen is supportive, not marquee — HF-008 carried the headline visual budget. Don't obsess over pixel-perfect on a 1-2h story.
 
 ## Definition of done
 
-- [ ] `tests/e2e/hf-008-results.spec.ts` passes (all N new tests)
-- [ ] Full existing suite green: 37 baseline + N new HF-008 tests
-- [ ] HF-006 spec does NOT regress
-- [ ] `tests/screenshots/hf-008-results/REVIEW.md` filled with weighted score ≥ 0.85
+- [ ] All 9 HF-009 tests pass
+- [ ] Full e2e suite (50 baseline + 9 new = 59) all pass
+- [ ] `tests/screenshots/hf-009-history/REVIEW.md` weighted score ≥ 0.85
 - [ ] `reviewer` signed off
-- [ ] PR opened against `develop` (NOT `main`) with embedded screenshots + MapView shared-file note in body
+- [ ] Security-auditor SKIPPED (Path B)
+- [ ] PR opened against `develop` with embedded screenshots
 - [ ] `STORY.md` + `.claude-resume.md` present at worktree root
 
-## Decisions (signed off by user 2026-05-18)
+## Open questions for the user
 
-**D1 — Drag handle is a visual affordance only** (Q1=OK)
-The bottom sheet renders a drag-handle pill at the top to match the spec mock visually, but tapping/dragging it has no effect in v1 — the sheet is always fully open. No touch handlers, no collapsed state, no peek mode. Real drag-to-collapse interaction is deferred to a future story (likely after HF-010 when tablet behaviour is settled).
+**Q1 — Path B (client-side type filter) instead of extending GET handler**
+Existing GET takes single `?type=X`. Multi-select would need:
+- **Path A**: extend `searchParams.getAll("type")` + Prisma `{ in: ... }`. Server-side. Adds API surface → security-auditor needed.
+- **Path B (proposed)**: leave handler alone; fetch by `since` only; client-side filter via `useMemo`. ≤ 50 rows so perf is fine. No API change, no security-auditor.
 
-**D2 — Incident teardrop uses canvas-drawn symbol layer first** (Q2=A)
-The incident marker is rendered as a Mapbox symbol layer with an in-memory `HTMLCanvasElement`-drawn icon (a red teardrop with a white `!` glyph) registered via `map.addImage('hf-incident', canvas)`. The icon is generated once during the `style.load` handler. Fallback path (kept implementable but not committed first): if `addImage` proves fragile on the Mapbox GL v3 / Next 16 stack (image fails to register, late hydration race, etc.), swap `LAYER_INCIDENT` back to a circle paint layer and add a sibling symbol layer with `text-field: "!"`. Either path keeps the `data-hf-map-state` test seam unchanged.
+**Proposed: Path B. OK?**
 
-**D3 — NAVIGATE link uses `maps:?daddr=<lat>,<lng>` literally** (Q3=OK)
-Per the brief. This is the iOS Maps URL scheme — taps on iPhone open Maps.app to driving directions; on Android/desktop the link is a no-op (or browser-prompt). Acceptable for the prototype (FDNY-inspired field tool aimed at iPhones). If Android tablet support is required later (potentially HF-010 fallout), swap the helper to a UA-detected `geo:` / `https://maps.google.com/?daddr=` variant.
+**Q2 — Type filter layout + `+N` overflow**
+- **Option A**: hide chips beyond 3 selected; show "+N" in their place
+- **Option B (proposed)**: always render all 6 type chips in 2×3 grid; `+N` chip is a supplementary count summary (non-interactive, never hides individual chips)
 
-**D4 — List-icon modal shows the same data, longer list format** (Q4=OK)
-Tapping the list-icon footer button opens a `role="dialog"` modal with `aria-modal="true"`. The modal lists the top-3 nearest hydrants AND the `flaggedOos` entries — one row per hydrant: mono id + address + distance (display) + ETA (yellow mono). No filters, no sort controls, no per-row actions. Close button (visible top-right) restores focus to the list-icon trigger.
+**Proposed: Option B. OK?**
+
+**Q3 — `ALL` time filter semantics**
+`ALL` = `since=all` (no date cutoff, all historical incidents). Default on first load is `7D`.
+
+**Proposed: confirm. OK?**
+
+**Q4 — Time-ago format**
+Mirror HintCard: `1 HR AGO` (singular) / `N HRS AGO` for < 48h, `N DAYS AGO` for ≥ 48h. Uppercase mono.
+
+**Proposed: same as HintCard. OK?**
+
+**Q5 — Empty-filter map centre fallback**
+Same as HF-005 D3: Gorham centroid `[-70.444, 43.679]` (lng-first).
+
+**Proposed: same fallback. OK?**
