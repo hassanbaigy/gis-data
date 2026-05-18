@@ -62,12 +62,16 @@ export function HydrantCard({
       className={wrapperClasses}
       aria-label={`Hydrant${isOos ? " out of service" : ` rank ${rank}`}: ${hydrant.id}`}
     >
-      {/* Big rank digit */}
+      {/* Big rank digit — suppressed for OOS cards (reviewer H2). OOS rows
+          aren't ranked in the same sequence as the top-3, so the modal
+          uses a `·` placeholder there too. Keeps the visual hierarchy
+          honest: only ranks 1, 2, 3 read as competing in driving-time
+          order. */}
       <div
         className="flex h-12 w-12 flex-shrink-0 items-center justify-center font-display text-4xl font-extrabold leading-none text-paper"
         aria-hidden="true"
       >
-        {rank}
+        {isOos ? "·" : rank}
       </div>
 
       <div className="flex flex-1 flex-col gap-0.5 min-w-0">

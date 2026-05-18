@@ -60,7 +60,11 @@ export function HydrantsModal({ entries, onClose }: Props) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Full hydrant list"
+      // Reviewer M2 — point the dialog's accessible name at the VISIBLE
+      // heading rather than a hidden aria-label that differs in wording.
+      // VoiceOver / NVDA now announce "All Hydrants" matching what the
+      // sighted user sees.
+      aria-labelledby="hf-modal-heading"
       className="fixed inset-0 z-20 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
       onClick={(e) => {
         // Backdrop click closes; panel click does not (event target check)
@@ -70,7 +74,10 @@ export function HydrantsModal({ entries, onClose }: Props) {
       <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden border border-paper/20 bg-black shadow-[0_-12px_48px_rgba(0,0,0,0.7)]">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-paper/10 px-4 py-3">
-          <h2 className="font-display text-lg font-extrabold uppercase tracking-wider text-paper">
+          <h2
+            id="hf-modal-heading"
+            className="font-display text-lg font-extrabold uppercase tracking-wider text-paper"
+          >
             All Hydrants
           </h2>
           <button

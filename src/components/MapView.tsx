@@ -222,9 +222,14 @@ export function MapView({
       });
 
       // Register the incident teardrop icon BEFORE the symbol layer that
-      // references it — Mapbox throws "image not found" if a symbol layer
-      // is added pointing at an unregistered image.
+      // references it. The matching `addLayer` for LAYER_INCIDENT below is
+      // gated on the SAME boolean — if the canvas 2D context is unavailable
+      // (rare, but happens in some headless WASM-GL environments), we fall
+      // back to D2's circle-paint variant so the spec's console-error
+      // guard doesn't trip on a "Image 'hf-incident-teardrop' not loaded"
+      // error from a dangling symbol layer.
       const incidentIcon = createIncidentTeardropImageData();
+      const useTeardropSymbol = incidentIcon !== null;
       if (incidentIcon && !map.hasImage(IMAGE_INCIDENT)) {
         map.addImage(IMAGE_INCIDENT, incidentIcon, { pixelRatio: 2 });
       }
@@ -307,7 +312,9 @@ export function MapView({
         filter: ["==", ["get", "type"], "oos"],
         layout: {
           "text-field": "✕",
-          "text-size": 18,
+          // Spec card 3 calls for 14px. Mapbox text-size is unitless in
+          // style coordinates but maps roughly 1:1 to CSS px at zoom ≥ 10.
+          "text-size": 14,
           "text-allow-overlap": true,
           "text-ignore-placement": true,
           "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
@@ -334,21 +341,57 @@ export function MapView({
         },
       });
 
-      // Incident — symbol layer with the canvas-drawn teardrop icon.
-      map.addLayer({
-        id: LAYER_INCIDENT,
-        type: "symbol",
-        source: MARKER_SOURCE,
-        filter: ["==", ["get", "type"], "incident"],
-        layout: {
-          "icon-image": IMAGE_INCIDENT,
-          "icon-size": 0.7,
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          // Anchor the bottom point of the teardrop on the lat/lng.
-          "icon-anchor": "bottom",
-        },
-      });
+      // Incident — symbol layer with the canvas-drawn teardrop icon when
+      // available, else D2 fallback to a circle paint layer. The fallback
+      // path keeps Mapbox console-clean (the symbol layer would log
+      // "Image not loaded" on every paint if the icon wasn't registered).
+      if (useTeardropSymbol) {
+        map.addLayer({
+          id: LAYER_INCIDENT,
+          type: "symbol",
+          source: MARKER_SOURCE,
+          filter: ["==", ["get", "type"], "incident"],
+          layout: {
+            "icon-image": IMAGE_INCIDENT,
+            "icon-size": 0.7,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            // Anchor the bottom point of the teardrop on the lat/lng.
+            "icon-anchor": "bottom",
+          },
+        });
+      } else {
+        // D2 Plan B fallback — red circle + white "!" overlay. Two layers
+        // share the LAYER_INCIDENT id only for the circle base; the text
+        // layer rides above with a distinct id but is added to the same
+        // visual slot in the stack.
+        map.addLayer({
+          id: LAYER_INCIDENT,
+          type: "circle",
+          source: MARKER_SOURCE,
+          filter: ["==", ["get", "type"], "incident"],
+          paint: {
+            "circle-radius": 12,
+            "circle-color": "#E11D29",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+        map.addLayer({
+          id: `${LAYER_INCIDENT}-label`,
+          type: "symbol",
+          source: MARKER_SOURCE,
+          filter: ["==", ["get", "type"], "incident"],
+          layout: {
+            "text-field": "!",
+            "text-size": 14,
+            "text-allow-overlap": true,
+            "text-ignore-placement": true,
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          },
+          paint: { "text-color": "#ffffff" },
+        });
+      }
     });
 
     // `load` fires after style.load + first viewport tiles are visible.

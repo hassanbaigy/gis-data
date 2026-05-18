@@ -38,10 +38,16 @@ export function ActiveTimerPill({ createdAt }: Props) {
   const ss = String(elapsedSec % 60).padStart(2, "0");
 
   return (
+    // Reviewer MED1 — `role="timer"` + `aria-live="off"` is the
+    // semantically correct pattern for a periodically-updated countdown.
+    // A `polite`-live status would have a screen reader announce every
+    // second; `off` lets the user navigate to the element when they want
+    // the current value without being interrupted.
     <div
       className="inline-flex items-center gap-2 bg-red/95 px-3 py-1.5 shadow-[0_4px_16px_rgba(225,29,41,0.4)] backdrop-blur-sm"
-      role="status"
-      aria-live="polite"
+      role="timer"
+      aria-live="off"
+      aria-label={`Active for ${mm} minutes ${ss} seconds`}
     >
       <span
         className="h-2 w-2 animate-pulse rounded-full bg-paper"
