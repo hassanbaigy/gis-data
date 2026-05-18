@@ -5,14 +5,28 @@
  * optional route polyline. Consumed by HF-005 (home), HF-008 (results +
  * route), and HF-009 (history).
  *
- * V1 visual fidelity is deliberately loose; HF-008 polishes the marker
- * geometry and the route's dashed double-stack styling. This component
- * focuses on correctness, lifecycle, and the testable state surface.
+ * HF-008 polished the marker geometry + route styling. Specifically:
+ *   - Incident marker: symbol layer with a canvas-drawn red teardrop and a
+ *     white `!` glyph (was a plain red circle). D2 Plan A — image is drawn
+ *     once during `style.load` via `ctx.getImageData` and registered with
+ *     `map.addImage`.
+ *   - Chosen (#1) marker: yellow halo via a wider low-opacity stroke (visual
+ *     emphasis on the routed-to hydrant).
+ *   - Hydrant ring (#2, #3): paint stays a yellow ring, slightly thicker
+ *     stroke for legibility at zoom 12.
+ *   - OOS marker: symbol layer with a grey `✕` text glyph (was a grey
+ *     circle). Uses Mapbox's default glyph set — no addImage needed.
+ *   - Route polyline: double-stack. `LAYER_ROUTE_BASE` is a wide 10px
+ *     35%-opacity underlay; `LAYER_ROUTE` on top is the original 5px line
+ *     now with `line-dasharray: [2, 2]` for the dashed look.
+ *
+ * Everything else is unchanged: `MapViewProps` interface, layer ID
+ * constants (LAYER_OOS and LAYER_INCIDENT keep their names even though
+ * their type switched from `circle` to `symbol`), and the
+ * `data-hf-map-state` test seam (the four attributes Playwright reads).
  *
  * The map renders on a WebGL canvas — DOM queries don't see the markers.
- * We expose a hidden <div data-hf-map-state> with sync'd attributes
- * (marker-count, marker-types, has-route, status) so the Playwright spec
- * has a stable seam.
+ * `<div data-hf-map-state>` is the testable seam.
  */
 import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
@@ -21,18 +35,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 const MAPBOX_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-// Stable Mapbox source + layer IDs. We currently assume at most one MapView
-// per page — if a future story renders two simultaneously (split view, etc.)
-// the second mount will collide on these IDs and Mapbox will throw. At that
-// point, suffix the IDs with an instance counter passed via props.
+// Stable Mapbox source + layer IDs. Layer IDs are unchanged from HF-004 even
+// though HF-008 switched some types from `circle` to `symbol` — preserving
+// the names keeps any external `setPaintProperty` / `setLayoutProperty`
+// references working (none currently, but future stories may add them).
 const MARKER_SOURCE = "hf-markers";
 const ROUTE_SOURCE = "hf-route";
-const LAYER_INCIDENT = "hf-incident-circle";
+const LAYER_INCIDENT = "hf-incident-circle"; // now a symbol layer
 const LAYER_HYDRANT = "hf-hydrant-circle";
 const LAYER_HYDRANT_RING = "hf-hydrant-ring";
 const LAYER_CHOSEN = "hf-chosen-circle";
-const LAYER_OOS = "hf-oos-circle";
-const LAYER_ROUTE = "hf-route-line";
+const LAYER_OOS = "hf-oos-circle"; // now a symbol layer
+const LAYER_ROUTE_BASE = "hf-route-line-base"; // NEW (HF-008) — wide underlay
+const LAYER_ROUTE = "hf-route-line"; // dashed top layer
+
+// Image ID for the canvas-drawn incident teardrop.
+const IMAGE_INCIDENT = "hf-incident-teardrop";
 
 export type MapMarkerType = "incident" | "hydrant" | "chosen" | "oos";
 
@@ -73,6 +91,62 @@ function markersToFeatureCollection(
       geometry: { type: "Point", coordinates: [m.lng, m.lat] },
     })),
   };
+}
+
+/**
+ * Draw the incident teardrop icon to an offscreen canvas and return the
+ * resulting ImageData for `map.addImage`. Called once inside the
+ * `style.load` callback (HF-008 D2 Plan A).
+ *
+ * The icon is 48×48 with `pixelRatio: 2` registration, so it renders at
+ * ~24px on a standard-DPI screen and crisp on retina. White outline +
+ * red interior + white `!` glyph centred in the head.
+ *
+ * Falls back to returning null if the browser can't get a 2D context
+ * (extremely rare; the caller checks).
+ */
+function createIncidentTeardropImageData(): ImageData | null {
+  const size = 48;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // White outer outline (drawn first, slightly larger so it shows through
+  // the edges of the red fill below)
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(24, 18, 15, 0, Math.PI * 2); // head
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(12.5, 24.5); // tail: triangle from left base, right base, point
+  ctx.lineTo(35.5, 24.5);
+  ctx.lineTo(24, 46);
+  ctx.closePath();
+  ctx.fill();
+
+  // Red interior (drawn on top, smaller — leaves a 1.5px white outline)
+  ctx.fillStyle = "#E11D29";
+  ctx.beginPath();
+  ctx.arc(24, 18, 13.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(14.5, 25);
+  ctx.lineTo(33.5, 25);
+  ctx.lineTo(24, 43.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // White `!` glyph centred in the head
+  ctx.fillStyle = "#ffffff";
+  ctx.font =
+    'bold 18px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("!", 24, 19);
+
+  return ctx.getImageData(0, 0, size, size);
 }
 
 export function MapView({
@@ -132,7 +206,8 @@ export function MapView({
 
     map.on("style.load", () => {
       styleLoadedRef.current = true;
-      // Add empty sources up front; data sync effect below will fill them.
+
+      // Sources first
       map.addSource(MARKER_SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -146,9 +221,39 @@ export function MapView({
         },
       });
 
-      // Layers, low → high stacking:
-      //   route → hydrant-ring → hydrant → oos → chosen-halo → chosen → incident
-      // (incidents on top so the firefighter always sees them clearly).
+      // Register the incident teardrop icon BEFORE the symbol layer that
+      // references it — Mapbox throws "image not found" if a symbol layer
+      // is added pointing at an unregistered image.
+      const incidentIcon = createIncidentTeardropImageData();
+      if (incidentIcon && !map.hasImage(IMAGE_INCIDENT)) {
+        map.addImage(IMAGE_INCIDENT, incidentIcon, { pixelRatio: 2 });
+      }
+
+      // Layer stack (low → high). Order encodes z-index:
+      //   route-base (wide underlay)
+      //   route (dashed top)
+      //   hydrant-ring
+      //   hydrant
+      //   oos (symbol X)
+      //   chosen (yellow halo + fill)
+      //   incident (symbol teardrop) — always on top
+      //
+      // Both route layers consume ROUTE_SOURCE so a single geometry update
+      // flows to both. They're toggled on/off together by the route-sync
+      // effect below.
+
+      map.addLayer({
+        id: LAYER_ROUTE_BASE,
+        type: "line",
+        source: ROUTE_SOURCE,
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": "#FCD34D",
+          "line-width": 10,
+          "line-opacity": 0.35,
+        },
+      });
+
       map.addLayer({
         id: LAYER_ROUTE,
         type: "line",
@@ -157,7 +262,10 @@ export function MapView({
         paint: {
           "line-color": "#FCD34D",
           "line-width": 5,
-          "line-opacity": 0.9,
+          "line-opacity": 0.95,
+          // HF-008 — dashed top stroke per spec card 4 ("dashed top layer
+          // 5px solid yellow"). Dash units are in line-widths.
+          "line-dasharray": [2, 2],
         },
       });
 
@@ -167,11 +275,12 @@ export function MapView({
         source: MARKER_SOURCE,
         filter: ["==", ["get", "type"], "hydrant"],
         paint: {
-          "circle-radius": 10,
+          "circle-radius": 11,
           "circle-color": "transparent",
-          "circle-stroke-width": 1.5,
+          // Wider stroke than HF-004's 1.5 — reads cleaner at zoom 12.
+          "circle-stroke-width": 2,
           "circle-stroke-color": "#FCD34D",
-          "circle-stroke-opacity": 0,
+          "circle-stroke-opacity": 0, // toggled by ringHydrants effect
         },
       });
 
@@ -188,44 +297,56 @@ export function MapView({
         },
       });
 
+      // OOS — symbol layer with a grey `✕` glyph (HF-008). Uses Mapbox's
+      // default glyph set so no addImage is required. The default glyph
+      // font ("Open Sans Bold") is loaded by `mapbox://styles/mapbox/dark-v11`.
       map.addLayer({
         id: LAYER_OOS,
-        type: "circle",
+        type: "symbol",
         source: MARKER_SOURCE,
         filter: ["==", ["get", "type"], "oos"],
+        layout: {
+          "text-field": "✕",
+          "text-size": 18,
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        },
         paint: {
-          "circle-radius": 7,
-          "circle-color": "#6b7280",
-          "circle-opacity": 0.6,
-          "circle-stroke-width": 1,
-          "circle-stroke-color": "#0a0a0a",
+          "text-color": "#9ca3af", // gray-400; visible on dark bg
+          "text-halo-color": "#0a0a0a",
+          "text-halo-width": 2,
         },
       });
 
+      // Chosen (#1) — yellow halo via a wider, low-opacity stroke.
       map.addLayer({
         id: LAYER_CHOSEN,
         type: "circle",
         source: MARKER_SOURCE,
         filter: ["==", ["get", "type"], "chosen"],
         paint: {
-          "circle-radius": 11,
+          "circle-radius": 10,
           "circle-color": "#FCD34D",
-          "circle-stroke-width": 4,
+          "circle-stroke-width": 8, // wider halo (was 4)
           "circle-stroke-color": "#FCD34D",
-          "circle-stroke-opacity": 0.4,
+          "circle-stroke-opacity": 0.35, // softer (was 0.4)
         },
       });
 
+      // Incident — symbol layer with the canvas-drawn teardrop icon.
       map.addLayer({
         id: LAYER_INCIDENT,
-        type: "circle",
+        type: "symbol",
         source: MARKER_SOURCE,
         filter: ["==", ["get", "type"], "incident"],
-        paint: {
-          "circle-radius": 10,
-          "circle-color": "#E11D29",
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
+        layout: {
+          "icon-image": IMAGE_INCIDENT,
+          "icon-size": 0.7,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          // Anchor the bottom point of the teardrop on the lat/lng.
+          "icon-anchor": "bottom",
         },
       });
     });
@@ -290,7 +411,10 @@ export function MapView({
   }, [markers, ringHydrants, isReady]);
 
   // -------------------------------------------------------------------------
-  // Sync route geometry
+  // Sync route geometry. Both LAYER_ROUTE_BASE (HF-008 underlay) and
+  // LAYER_ROUTE (HF-004 top stroke, now dashed) share ROUTE_SOURCE — the
+  // setData call below feeds both, and the visibility toggle hides both
+  // together when there's no geometry to draw.
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!isReady) return;
@@ -309,12 +433,9 @@ export function MapView({
             geometry: { type: "LineString", coordinates: [] },
           },
     );
-    // Hide the route layer entirely when there's no geometry.
-    map.setLayoutProperty(
-      LAYER_ROUTE,
-      "visibility",
-      routeGeometry ? "visible" : "none",
-    );
+    const visibility: "visible" | "none" = routeGeometry ? "visible" : "none";
+    map.setLayoutProperty(LAYER_ROUTE_BASE, "visibility", visibility);
+    map.setLayoutProperty(LAYER_ROUTE, "visibility", visibility);
   }, [routeGeometry, isReady]);
 
   return (
