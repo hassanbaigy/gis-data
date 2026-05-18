@@ -27,6 +27,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MapView, type MapMarker } from "@/components/MapView";
+import {
+  TimeFilterChips,
+  type SinceFilter as _SinceFilter,
+} from "@/components/TimeFilterChips";
+import { TypeFilterChips } from "@/components/TypeFilterChips";
 
 // D5 — fallback when the filtered result is empty. Gorham, ME centroid
 // (lng-first per MapView's `center` prop convention). Same constant
@@ -47,8 +52,12 @@ export type IncidentRow = {
   chosenHydrantId: string | null;
 };
 
-/** Time-filter sentinel values that map 1:1 to the GET /api/incidents `since` query param. */
-export type SinceFilter = "7d" | "30d" | "all";
+/**
+ * Time-filter sentinel values that map 1:1 to the GET /api/incidents
+ * `since` query param. Re-exported from `TimeFilterChips` for callers
+ * that need the type.
+ */
+export type SinceFilter = _SinceFilter;
 
 type Props = {
   initialIncidents: IncidentRow[];
@@ -151,14 +160,17 @@ export function HistoryView({ initialIncidents }: Props) {
         className="flex flex-1 flex-col border-t border-paper/10 bg-black"
         style={{ minHeight: 0 }}
       >
-        {/* Step C replaces this placeholder with TimeFilterChips + TypeFilterChips. */}
+        {/* Filter rail — time (single-select 7D/30D/ALL) + type
+            (multi-select 6 categories with +N summary chip per D2). */}
         <div
-          className="flex flex-col gap-2 border-b border-paper/10 px-4 py-3"
+          className="flex flex-col gap-3 border-b border-paper/10 px-4 py-3"
           aria-label="Filters"
         >
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper/40">
-            Filters — wiring in step C
-          </p>
+          <TimeFilterChips value={since} onChange={setSince} />
+          <TypeFilterChips
+            selected={selectedTypes}
+            onChange={setSelectedTypes}
+          />
         </div>
 
         {/* Step D replaces this placeholder with IncidentRow components.
