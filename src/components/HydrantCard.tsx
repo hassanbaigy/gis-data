@@ -54,10 +54,13 @@ export function HydrantCard({
 
   return (
     <article
-      data-rank={String(rank)}
+      // OOS cards skip `data-rank` so test 07's `[data-rank='N']` locator
+      // never picks up an OOS row by mistake when the bottom sheet renders
+      // both the top-3 nearest AND the flagged OOS list.
+      data-rank={isOos ? undefined : String(rank)}
       data-oos={isOos ? "true" : undefined}
       className={wrapperClasses}
-      aria-label={`Hydrant rank ${rank}${isOos ? " out of service" : ""}: ${hydrant.id}`}
+      aria-label={`Hydrant${isOos ? " out of service" : ` rank ${rank}`}: ${hydrant.id}`}
     >
       {/* Big rank digit */}
       <div
