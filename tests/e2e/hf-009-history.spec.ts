@@ -373,6 +373,15 @@ test.describe("HF-009 /history page", () => {
       `expected filtered count (${filteredCount}) < initial count (${initialCount}) after STRUCTURE filter`,
     ).toBeLessThan(initialCount);
 
+    // Reviewer HIGH-3 — guard against vacuous pass: if filtering produced
+    // zero rows (e.g. filter bug), the per-row STRUCTURE assertion below
+    // would never execute and the test would silently pass. Assert > 0
+    // explicitly.
+    expect(
+      filteredCount,
+      "expected at least one STRUCTURE row after filter (otherwise the per-row assertion vacuously passes)",
+    ).toBeGreaterThan(0);
+
     // Every visible row must be a STRUCTURE incident.
     for (let i = 0; i < filteredCount; i++) {
       const rowText = (await rows.nth(i).textContent()) ?? "";
@@ -414,11 +423,16 @@ test.describe("HF-009 /history page", () => {
     }
 
     // D2: when > 3 type chips are selected, a supplementary +N indicator must appear.
-    // The +N element is non-interactive but visible.
-    const plusNEl = page.getByText(/\+\d+/).first();
+    // The +N element is non-interactive but visible. Reviewer T07 false-positive
+    // risk addressed: scope the locator to the type-filter region so an
+    // unrelated `+1`-style string elsewhere on the page can't satisfy it.
+    const typeFilterRegion = page.locator(
+      '[role="group"][aria-label="Incident type filter"]',
+    );
+    const plusNEl = typeFilterRegion.getByText(/\+\d+/).first();
     await expect(
       plusNEl,
-      "expected a +N indicator to be visible after selecting 4 type chips",
+      "expected a +N indicator inside the type-filter region after 4 chips selected",
     ).toBeVisible({ timeout: 5_000 });
 
     await page.screenshot({

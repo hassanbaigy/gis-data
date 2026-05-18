@@ -1,10 +1,11 @@
 /**
  * /history — Filterable incident list (HF-009).
  *
- * Server component. The `/history/*` layout already calls
- * `requireFirefighter()`, so by the time we render the cookie + DB row are
- * validated. We re-call it here only to satisfy the gate explicitly and
- * keep the page self-documenting.
+ * Server component. The `/history/layout.tsx` gate calls
+ * `requireFirefighter()` BEFORE this page renders — we do NOT repeat the
+ * call here (reviewer BLOCKER-2). The layout's gate is the single
+ * checkpoint per the project's auth pattern; calling it twice would burn
+ * an extra Prisma `findUnique` per page render with no benefit.
  *
  * Initial Prisma query is `since=7d` (D3 default) WITHOUT a `unitId`
  * filter — `/history` is a multi-unit review screen, not the per-unit
@@ -12,21 +13,24 @@
  * subsequent re-fetches against `GET /api/incidents` when the time chip
  * changes. Type filter (D1) is applied client-side via `useMemo` — no
  * extra round trips.
+ *
+ * `force-dynamic` is set because the layout's `requireFirefighter()` call
+ * reads `cookies()` indirectly, and Next.js requires explicit opt-in to
+ * dynamic rendering when child pages don't read request-time APIs
+ * themselves.
  */
 
-import { requireFirefighter } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 import { HistoryView, type IncidentRow } from "./history-view";
 
-// `cookies()` is read indirectly via `requireFirefighter()` — page MUST be
-// dynamic (no caching).
 export const dynamic = "force-dynamic";
 
 const INITIAL_SINCE_DAYS = 7;
 
 export default async function HistoryPage() {
-  await requireFirefighter();
+  // No `requireFirefighter()` here — `/history/layout.tsx` already gated
+  // every child route. See file header for rationale.
 
   const cutoff = new Date(
     Date.now() - INITIAL_SINCE_DAYS * 24 * 60 * 60 * 1000,
@@ -34,6 +38,10 @@ export default async function HistoryPage() {
   const rows = await prisma.incident.findMany({
     where: { createdAt: { gte: cutoff } },
     orderBy: { createdAt: "desc" },
+    // Reviewer HIGH-1 — only project the fields `IncidentRow` actually
+    // renders. firefighterId + notes were already excluded as PII (HF-005);
+    // unitId and chosenHydrantId are dropped here too because they cost
+    // bytes across the network and aren't used by the list view.
     select: {
       id: true,
       createdAt: true,
@@ -42,8 +50,6 @@ export default async function HistoryPage() {
       lng: true,
       type: true,
       alarmLevel: true,
-      unitId: true,
-      chosenHydrantId: true,
     },
   });
 

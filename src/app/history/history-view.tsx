@@ -27,12 +27,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MapView, type MapMarker } from "@/components/MapView";
-import {
-  TimeFilterChips,
-  type SinceFilter as _SinceFilter,
-} from "@/components/TimeFilterChips";
+import { TimeFilterChips } from "@/components/TimeFilterChips";
 import { TypeFilterChips } from "@/components/TypeFilterChips";
 import { IncidentRow as IncidentRowUI } from "@/components/IncidentRow";
+
+// Re-export the time-filter sentinel type so callers that import this
+// module can use it without reaching into the chip component.
+export type { SinceFilter } from "@/components/TimeFilterChips";
 
 // D5 — fallback when the filtered result is empty. Gorham, ME centroid
 // (lng-first per MapView's `center` prop convention). Same constant
@@ -49,23 +50,16 @@ export type IncidentRow = {
   lng: number;
   type: string;
   alarmLevel: number;
-  unitId: string;
-  chosenHydrantId: string | null;
+  // unitId + chosenHydrantId removed (reviewer HIGH-1) — not rendered by
+  // IncidentRow and not used for map markers or filters.
 };
-
-/**
- * Time-filter sentinel values that map 1:1 to the GET /api/incidents
- * `since` query param. Re-exported from `TimeFilterChips` for callers
- * that need the type.
- */
-export type SinceFilter = _SinceFilter;
 
 type Props = {
   initialIncidents: IncidentRow[];
 };
 
 export function HistoryView({ initialIncidents }: Props) {
-  const [since, setSince] = useState<SinceFilter>("7d");
+  const [since, setSince] = useState<"7d" | "30d" | "all">("7d");
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [incidents, setIncidents] =
     useState<IncidentRow[]>(initialIncidents);

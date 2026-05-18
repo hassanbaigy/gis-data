@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * IncidentRow (HF-009) — single row in the `/history` incident list.
  *
@@ -104,8 +106,11 @@ function formatTimeAgo(iso: string): string {
   if (elapsedMs < 0) return "JUST NOW";
 
   const hours = Math.floor(elapsedMs / 3_600_000);
-  if (hours < 1) return "1 HR AGO";
-  if (hours === 1) return "1 HR AGO";
+  // Collapsed `hours < 1 || hours === 1` into `<= 1` per reviewer HIGH-2.
+  // Floor of 0–59 minutes is 0; floor of exactly 60 minutes is 1; both
+  // surface as "1 HR AGO" — the minimum-display floor for the spec's
+  // /\d+\s*(HR|HRS|DAY|DAYS)\s*AGO/i regex.
+  if (hours <= 1) return "1 HR AGO";
   if (hours < 48) return `${hours} HRS AGO`;
 
   const days = Math.floor(elapsedMs / 86_400_000);
