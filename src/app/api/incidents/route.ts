@@ -146,3 +146,106 @@ export async function POST(req: Request) {
     ...nearestResult,
   });
 }
+
+/**
+ * GET /api/incidents
+ *
+ * Lists incidents (HF-005 — /map home consumes this). Read-only.
+ *
+ * Query params:
+ *   since:  "7d" (default) | "30d" | "all"
+ *   type:   STRUCTURE|VEHICLE|BRUSH|MEDICAL|HAZMAT|OTHER (optional, no filter if omitted)
+ *   unitId: any non-empty string, max 32 chars (optional)
+ *
+ * Response (200): { incidents: [...] } ordered createdAt DESC.
+ *   Fields per row: id, createdAt, address, lat, lng, type, alarmLevel,
+ *   unitId, chosenHydrantId. `firefighterId` and `notes` are intentionally
+ *   omitted via Prisma `select` — `firefighterId` reveals the operator's DB
+ *   id; `notes` may contain free-form text the firefighter wrote at scene.
+ *
+ * Errors:
+ *   401 { error: "unauthenticated" }   — missing or invalid hf_badge cookie
+ *   400 { error: "invalid_since"   }   — `since` not one of 7d/30d/all
+ *   400 { error: "invalid_type"    }   — `type` not in VALID_TYPES
+ *   400 { error: "invalid_unitId"  }   — `unitId` empty or > 32 chars
+ *
+ * Note on error-code casing: this handler uses snake_case (e.g.
+ * `invalid_since`) to match HF-001's existing convention. POST above uses
+ * kebab-case (`invalid-coords`). The inconsistency is a known follow-up
+ * (reviewer HIGH-002 in develop's last audit); fixing it here would
+ * balloon HF-005's scope, so the GET handler is internally consistent
+ * (`invalid_*` + `unauthenticated`) and POST stays as-is.
+ */
+export async function GET(req: Request) {
+  // ---------------------------- auth --------------------------------------
+  // readBadge() returns null on missing/invalid cookie → 401 (NOT redirect).
+  // Then verify the badge actually maps to a real Firefighter row, same as
+  // POST. Defends against a stale cookie whose row was deleted out of band.
+  const badge = await readBadge();
+  if (!badge) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+  const firefighter = await prisma.firefighter.findUnique({ where: { badge } });
+  if (!firefighter) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  // ------------------------- parse + validate query -----------------------
+  const url = new URL(req.url);
+  const sinceParam = url.searchParams.get("since") ?? "7d";
+  const typeParam = url.searchParams.get("type"); // null | string
+  const unitIdParam = url.searchParams.get("unitId"); // null | string
+
+  // since: only the three sentinels are accepted.
+  let cutoff: Date | null;
+  if (sinceParam === "7d") {
+    cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  } else if (sinceParam === "30d") {
+    cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  } else if (sinceParam === "all") {
+    cutoff = null;
+  } else {
+    return NextResponse.json({ error: "invalid_since" }, { status: 400 });
+  }
+
+  // type: if provided, must match the canonical set.
+  if (typeParam !== null && !VALID_TYPES.has(typeParam)) {
+    return NextResponse.json({ error: "invalid_type" }, { status: 400 });
+  }
+
+  // unitId: if provided, must be non-empty and ≤ 32 chars. Empty string
+  // (`?unitId=`) is rejected — the caller meant the absence of a filter,
+  // they should omit the param entirely.
+  if (
+    unitIdParam !== null &&
+    (unitIdParam.length === 0 || unitIdParam.length > 32)
+  ) {
+    return NextResponse.json({ error: "invalid_unitId" }, { status: 400 });
+  }
+
+  // ------------------------- query Prisma ---------------------------------
+  // Conditional-spread the where clauses so omitted params don't constrain
+  // the query. Use `select` to project ONLY the fields the home page needs;
+  // this is the PII guard for firefighterId + notes.
+  const incidents = await prisma.incident.findMany({
+    where: {
+      ...(cutoff !== null ? { createdAt: { gte: cutoff } } : {}),
+      ...(typeParam !== null ? { type: typeParam } : {}),
+      ...(unitIdParam !== null ? { unitId: unitIdParam } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      createdAt: true,
+      address: true,
+      lat: true,
+      lng: true,
+      type: true,
+      alarmLevel: true,
+      unitId: true,
+      chosenHydrantId: true,
+    },
+  });
+
+  return NextResponse.json({ incidents });
+}

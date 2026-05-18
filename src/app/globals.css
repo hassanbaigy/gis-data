@@ -15,6 +15,11 @@
   --color-red: #E11D29;
   --color-yellow: #FCD34D;
   --color-paper: #f4f2eb;
+  /* `smoke` is the muted grey used for inactive chip states, secondary
+   * outlines, and metadata text on dark surfaces. Added by HF-005 for the
+   * filter chip rail (`text-smoke` / `border-smoke` / `bg-smoke`). HF-009
+   * will reuse the same token. */
+  --color-smoke: #6b7280;
 
   /* Type system */
   --font-display: var(--font-barlow-condensed), Oswald, system-ui, sans-serif;
