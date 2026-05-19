@@ -10,11 +10,22 @@
  * type filter is applied **client-side via `useMemo`** per D1 — no
  * additional network round trips.
  *
- * Layout: split flex column. Top section (`flex-1` + `minHeight: 0`) is
- * the `MapView`. Bottom section (`flex-1`, `overflow-y-auto`) holds the
- * filter rail + scrollable incident list. `BottomSheet` is deliberately
- * NOT used here — it's an overlay component designed for full-bleed map
- * screens, not split layouts.
+ * Layout: split flex column at phone (HF-009). Top section (`flex-1` +
+ * `minHeight: 0`) is the `MapView`. Bottom section (`flex-1`,
+ * `overflow-y-auto`) holds the filter rail + scrollable incident list.
+ * `BottomSheet` is deliberately NOT used here — it's an overlay
+ * component designed for full-bleed map screens, not split layouts.
+ *
+ * HF-010 — at the `lg:` breakpoint (900px per globals.css
+ * `--breakpoint-lg`) the layout flips to row. The incident-history
+ * section becomes a 440px left rail (`lg:order-1 lg:w-[440px]
+ * lg:flex-none`); the map section takes the remaining width
+ * (`lg:order-2`). The map wrapper gets `minWidth: 0` (in addition to
+ * `minHeight: 0`) to break the Mapbox container-sizing race in row-flex.
+ * Pure CSS — no conditional rendering needed here because
+ * `aria-label="Incident history"` is a single element regardless of
+ * viewport, so there is no DOM-duplication risk for HF-009's strict-mode
+ * Playwright assertions.
  *
  * Map markers are `type: "incident"` ONLY (per AC and T02 assertion).
  * Hydrants, chosen, and OOS markers are not surfaced on this screen.
@@ -136,23 +147,30 @@ export function HistoryView({ initialIncidents }: Props) {
   );
 
   return (
-    <main className="flex h-screen flex-col bg-black text-paper">
-      {/* Map area — flex-1 with inline minHeight:0 to break Mapbox container
-          race (see mapbox-integration.md). */}
+    // HF-010: column at phone (map top / history bottom — HF-009
+    // byte-identical). Row at tablet (history rail left / map right).
+    <main className="flex h-screen flex-col bg-black text-paper lg:flex-row">
+      {/* Map area — flex-1 fills remaining space at both viewports. Inline
+          minHeight:0 breaks the Mapbox column-flex container race
+          (HF-005); minWidth:0 covers the row-flex case at tablet
+          (HF-010 D2). lg:order-2 places it to the RIGHT of the history
+          rail at tablet. */}
       <section
         aria-label="History map"
-        className="relative flex-1"
-        style={{ minHeight: 0 }}
+        className="relative flex-1 lg:order-2"
+        style={{ minHeight: 0, minWidth: 0 }}
       >
         <MapView center={center} zoom={ZOOM} markers={markers} />
       </section>
 
-      {/* Filter rail + list section. flex-1 mirrors the map height; the
-          inner list area is `overflow-y-auto` so long lists scroll
-          internally without expanding the section. */}
+      {/* Filter rail + list section. Phone: full-width below the map, flex-1
+          mirrors the map height with `border-t`. Tablet: fixed-width 440px
+          rail on the LEFT (lg:order-1 + lg:w-[440px] + lg:flex-none),
+          border switches from top to right. T03 asserts width 432-448 and
+          x ≤ 4 at 1024×768. */}
       <section
         aria-label="Incident history"
-        className="flex flex-1 flex-col border-t border-paper/10 bg-black"
+        className="flex flex-1 flex-col border-t border-paper/10 bg-black lg:order-1 lg:w-[440px] lg:flex-none lg:flex-shrink-0 lg:border-t-0 lg:border-r"
         style={{ minHeight: 0 }}
       >
         {/* Filter rail — time (single-select 7D/30D/ALL) + type
