@@ -25,6 +25,15 @@
   --font-display: var(--font-barlow-condensed), Oswald, system-ui, sans-serif;
   --font-ui: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Breakpoints — HF-010 D1.
+   * Tailwind v4's default `--breakpoint-lg` is 1024px. HF-010 spec card
+   * "TABLET (LANDSCAPE)" specifies a 900px split point. Confirmed at HF-010
+   * commit time (zero `lg:` usages in src/) — overriding does not affect
+   * any existing class. If a future story needs a true desktop breakpoint
+   * (≥ 1280px), introduce a NEW token like `--breakpoint-xl` rather than
+   * shifting `--breakpoint-lg` again. */
+  --breakpoint-lg: 900px;
 }
 
 body {
