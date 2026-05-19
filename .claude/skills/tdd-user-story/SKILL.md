@@ -40,6 +40,8 @@ Every step has a Lead checkpoint. Lead does NOT skip steps because "this story i
 
 Run these only on the very first story. After that they're already in place.
 
+**Bootstrap exception**: the FIRST bootstrap story (HF-000 in this repo) is the one story that runs directly on `develop` without a feature worktree, because the workflow tooling it sets up is what every subsequent story depends on. From HF-001 onward, the worktree-mandatory rule applies without exception. If you're reviewing a diff that touched `develop` directly, verify it's the bootstrap story; if not, the worktree rule was violated.
+
 ```bash
 # develop branch — PR target for every story
 git fetch origin
