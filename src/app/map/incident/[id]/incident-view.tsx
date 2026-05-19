@@ -306,7 +306,7 @@ export default function IncidentView() {
               static column. Footer sits at the bottom of the rail. */}
           <aside
             data-hf-rail="incident"
-            aria-label="Incident rail"
+            aria-label="Nearest hydrants and navigation controls"
             className="order-1 flex h-full w-[440px] flex-shrink-0 flex-col border-r border-paper/10"
           >
             {/* Top-bar inset spacer so the rail content sits below the

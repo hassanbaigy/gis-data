@@ -187,7 +187,10 @@ export function MapHome({ badge, unitId, initialIncidents }: Props) {
       <aside
         data-hf-rail="map"
         aria-label="Map controls and incident summary"
-        className="flex flex-shrink-0 flex-col border-r border-paper/10 bg-black lg:w-[440px] lg:order-1"
+        // No `lg:` prefixes — this <aside> is only mounted when
+        // `isTablet === true`, so unconditional widths/orders are
+        // sufficient and clearer (reviewer should-fix, 2026-05-19).
+        className="order-1 flex w-[440px] flex-shrink-0 flex-col border-r border-paper/10 bg-black"
       >
         {/* Top-bar inset spacer — the absolute top bar covers y∈[0, 56]px;
             push the rail content below it so the badge plate / SOS don't
