@@ -23,6 +23,20 @@ Fix three places at once:
 
 Inline style beats Tailwind class for this case because the size needs to be **resolved** before Mapbox's `new mapboxgl.Map({ container })` reads `container.clientWidth/Height`.
 
+### Row-flex (`flex-row`) needs `minWidth: 0` too — HF-010
+
+When `<main>` switches from `flex-col` to `flex-row` at a breakpoint (`lg:flex-row`), the column-flex `minHeight: 0` fix above is not enough — the **horizontal** dimension hits the same resolution race. Without `minWidth: 0` on the MapView's flex-row sibling, the map's container can render at `clientWidth === 0` and the canvas paints empty.
+
+`src/components/MapView.tsx` only sets `minHeight: 0` in its inline style (line ~491). Out-of-scope to touch for layout stories. **Fix at the consumer level** instead:
+
+```tsx
+<div className="relative flex-1 lg:order-2" style={{ minWidth: 0, minHeight: 0 }}>
+  <MapView ... />
+</div>
+```
+
+Applied in HF-010 to all three MapView consumers (`map-home.tsx`, `incident-view.tsx`, `history-view.tsx`). Keep this in mind whenever a new screen wraps MapView in a flex-row parent.
+
 ## Status / ready events
 
 Mapbox events that matter, in order:

@@ -68,6 +68,28 @@ When a story has a visual AC, the canonical source of truth is one of these two 
 - No subagent prompt without the context-pressure paragraph.
 - No session start without running the resume protocol.
 
+## Common gotchas across stories
+
+### Playwright strict-mode + CSS-hidden DOM duplicates (HF-010)
+
+When a screen has both a phone and a tablet variant that share the same text/aria-label, **prefer conditional rendering (`{isTablet ? <X> : null}`) over CSS-hidden duplicates (`hidden lg:flex`)**.
+
+CSS-hidden elements stay in DOM. Playwright's `expect(getByText(/foo/i)).toBeVisible()` matches BOTH copies (strict-mode rule), and the assertion fails with "resolved to 2 elements". `.first()` / `.filter({ visible: true })` are bandaids — the real fix is to keep only one copy in DOM per viewport.
+
+Trade-off: a brief phone→rail re-render flash on initial hydration at tablet (server renders the "phone" default `false`, `useEffect` resolves true after mount). Acceptable for a single-device prototype. Bigger apps would defer via `next/dynamic` + `ssr: false`.
+
+When the screen has NO duplication risk (e.g. `/history` has a single `aria-label="Incident history"`), CSS-only flips (`lg:flex-row` + `lg:w-[440px]`) are still the cleaner choice — no hydration flash.
+
+### Playwright default viewport when adding a Tailwind breakpoint (HF-010)
+
+Adding ANY `lg:` (or new breakpoint) class to existing screens will silently change what existing specs see at the **default** Playwright viewport. Tailwind v4's `Desktop Chrome` default (1280×720) is above 1024px and 900px. The 59 HF-001/005/006/008/009 specs were written assuming phone-layout DOM.
+
+Fix: switch `playwright.config.ts` `projects[0].use.viewport` to `{ width: 390, height: 844 }` (plain — NOT `devices["iPhone 13"]` which adds `isMobile: true` and mobile UA side effects). Per-spec tablet tests use `test.use({ viewport: { width: 1024, height: 768 } })` at file level. Zero changes to existing specs.
+
+### Tailwind v4 `--breakpoint-*` overrides are token-level, not file-level (HF-010)
+
+Tailwind v4 has no `tailwind.config.ts`. Breakpoints live in `globals.css` `@theme inline { --breakpoint-lg: 900px; }`. Override is collateral-free **only if there are zero existing usages of the prefix** — verify with `grep -r "lg:" src/` before overriding. If you need a true desktop step later, add `--breakpoint-xl` rather than shifting `lg` again.
+
 ## Why this exists
 
 Frontend stories regress visually all the time when you trust "I tested it manually." Worktrees prevent parallel agents from clobbering each other. The resume protocol means a context-exhausted agent costs you minutes, not a story. The confidence rubric forces the agent to be honest about what's actually done before asking for a review.
